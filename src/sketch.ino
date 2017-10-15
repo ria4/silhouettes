@@ -12,7 +12,7 @@ FASTLED_USING_NAMESPACE
 #define NUM_LEDS    60
 
 #define BUTTON_PIN    2
-#define IRRCV_PIN    11
+#define IRRCV_PIN     9
 #define STRIP_PIN     6
 
 #define INIT_BRIGHTNESS             15
@@ -24,10 +24,12 @@ const int fps_arr[FRAMES_PER_SECOND_MODES] = { 50, 120, 1000, 10000 };
 
 uint8_t brightness;
 uint8_t fps_idx;
-boolean pause = false;
+uint8_t pos_shift = 0;
+uint8_t hue_shift = 0;
 
 IRrecv irrecv(IRRCV_PIN);
 decode_results results;
+boolean pause = false;
 
 CRGB leds[NUM_LEDS];
 
@@ -37,15 +39,21 @@ CRGB leds[NUM_LEDS];
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 //SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { rainbow, juggle, confetti };
+SimplePatternList gPatterns = { one, rainbow, juggle, confetti };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
 uint8_t gCurrentPatternNumber = 0;
 uint8_t gCurrentPatternNumber_tmp;
 uint8_t gHue = 0; // rotating "base color" used by many of the patterns
 
-char channel_str[MAX_CHANNELS_IDX + 1];
+char buffer[3];
 uint8_t curr_char_idx = 0;
+
+typedef struct {
+  uint8_t params;
+  int frames_nbr;
+  CRGB frames[][NUM_LEDS];
+} silhouette;
 
 
 void fadeall() {
@@ -69,24 +77,36 @@ void setup() {
 }
 
 
+void addToBuffer(char c) {
+  if ( curr_char_idx < 3 ) {
+    buffer[curr_char_idx++] = c;
+  }
+}
+
 void flushChannelBuffer() {
-  channel_str[curr_char_idx] = 0;
-  gCurrentPatternNumber_tmp = atoi(channel_str);
-  Serial.println(gCurrentPatternNumber_tmp);
+  buffer[curr_char_idx] = 0;
+  gCurrentPatternNumber_tmp = atoi(buffer);
   if (gCurrentPatternNumber_tmp < channels_nbr) {
     gCurrentPatternNumber = gCurrentPatternNumber_tmp;
   }
   curr_char_idx = 0;
+  FastLED.clear();
 }
 
-void addToChannelBuffer(char c) {
-  if ( curr_char_idx < MAX_CHANNELS_IDX ) {
-    channel_str[curr_char_idx++] = c;
-    if (curr_char_idx == MAX_CHANNELS_IDX) {
-      flushChannelBuffer();
-    }
-  }
+void flushPosShiftBuffer() {
+  buffer[curr_char_idx] = 0;
+  pos_shift = atoi(buffer);
+  curr_char_idx = 0;
+  FastLED.clear();
 }
+
+void flushHueShiftBuffer() {
+  buffer[curr_char_idx] = 0;
+  hue_shift = atoi(buffer);
+  curr_char_idx = 0;
+  FastLED.clear();
+}
+
 
 void checkIRSignal()
 {
@@ -123,55 +143,65 @@ void checkIRSignal()
       case 0x511DBB:
         flushChannelBuffer();
         break;
+        
+      case 0xFF9867:  
+      case 0x97483BFB:
+        flushPosShiftBuffer();
+        break;
 
+      case 0xFFB04F:  
+      case 0xF0C41643:
+        flushHueShiftBuffer();
+        break;
+        
       case 0xFF6897:
       case 0xC101E57B:
-        addToChannelBuffer('0');
+        addToBuffer('0');
         break;
 
       case 0xFF30CF:
       case 0x9716BE3F:
-        addToChannelBuffer('1');
+        addToBuffer('1');
         break;
 
       case 0xFF18E7:
       case 0x3D9AE3F7:
-        addToChannelBuffer('2');
+        addToBuffer('2');
         break;
 
       case 0xFF7A85:
       case 0x6182021B:
-        addToChannelBuffer('3');
+        addToBuffer('3');
         break;
 
       case 0xFF10EF:
       case 0x8C22657B:
-        addToChannelBuffer('4');
+        addToBuffer('4');
         break;
 
       case 0xFF38C7:
       case 0x488F3CBB:
-        addToChannelBuffer('5');
+        addToBuffer('5');
         break;
 
       case 0xFF5AA5:
       case 0x449E79F:
-        addToChannelBuffer('6');
+        addToBuffer('6');
         break;
 
       case 0xFF42BD:
       case 0x32C6FDF7:
-        addToChannelBuffer('7');
+        addToBuffer('7');
         break;
 
       case 0xFF4AB5:
       case 0x1BC0157B:
-        addToChannelBuffer('8');
+        addToBuffer('8');
         break;
 
       case 0xFF52AD:
       case 0x3EC3FC1B:
-        addToChannelBuffer('9');
+        addToBuffer('9');
         break;
 
       case 0xFF22DD:
@@ -202,8 +232,6 @@ void loop()
 {
   if (!pause) {
     gPatterns[gCurrentPatternNumber]();
-
-    // do some periodic updates
     EVERY_N_MILLISECONDS( 30 ) { gHue++; } // slowly cycle the "base color" through the rainbow
   }
   
@@ -217,11 +245,13 @@ void loop()
 }
 
 void prevPattern() {
+  FastLED.clear();
   if (gCurrentPatternNumber == 0) { gCurrentPatternNumber = channels_nbr - 1; }
   else { gCurrentPatternNumber -= 1; }
 }
   
 void nextPattern() {
+  FastLED.clear();
   gCurrentPatternNumber = (gCurrentPatternNumber + 1) % channels_nbr;
 }
 
@@ -241,6 +271,12 @@ void spark()
   }  
 }
 
+void one()
+{
+  uint8_t pos = (0 + pos_shift) % NUM_LEDS;
+  leds[pos] = CHSV(hue_shift, 255, 255);
+}
+
 void rainbow() 
 {
   fill_rainbow(leds, NUM_LEDS, gHue, 7);
@@ -257,11 +293,7 @@ void rainbowWithGlitter()
 void addGlitter( fract8 chanceOfGlitter) 
 {
   if( random8() < chanceOfGlitter) {
-    switch (stripsState) {
-      case 0: {leds[ random16(NUM_LEDS) ] += CRGB::White; ledsb[ random16(NUM_LEDS) ] += CRGB::White; break;}
-      case 1: {leds[ random16(NUM_LEDS) ] += CRGB::White; break;}
-      case 2: {ledsb[ random16(NUM_LEDS) ] += CRGB::White; break;}
-    }
+    leds[ random16(NUM_LEDS) ] += CRGB::White;
   }
 }
 */
