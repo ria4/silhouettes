@@ -15,26 +15,48 @@ FASTLED_USING_NAMESPACE
 #define IRRCV_PIN    11
 #define STRIP_PIN     6
 
-#define INIT_BRIGHTNESS               15
-#define FRAMES_PER_SECOND_MODES       4
-#define INIT_FPS_IDX                  1
+#define INIT_BRIGHTNESS             15
+#define FRAMES_PER_SECOND_MODES     4
+#define INIT_FPS_IDX                1
+#define MAX_CHANNELS_IDX            1		// let's try not to compute a log10...
 
 const int fps_arr[FRAMES_PER_SECOND_MODES] = { 50, 120, 1000, 10000 };
 
-int brightness;
-int fps_idx;
-int randHue;
+uint8_t brightness;
+uint8_t fps_idx;
 boolean pause = false;
 
 IRrecv irrecv(IRRCV_PIN);
 decode_results results;
 
-// Define the array of leds
 CRGB leds[NUM_LEDS];
 
 
+#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
+
+// List of patterns to cycle through.  Each is defined as a separate function below.
+typedef void (*SimplePatternList[])();
+//SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
+SimplePatternList gPatterns = { rainbow, juggle, confetti };
+uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
+
+uint8_t gCurrentPatternNumber = 0;
+uint8_t gCurrentPatternNumber_tmp;
+uint8_t gHue = 0; // rotating "base color" used by many of the patterns
+
+char channel_str[MAX_CHANNELS_IDX + 1];
+uint8_t curr_char_idx = 0;
+
+
+void fadeall() {
+  for(int i = 0; i < NUM_LEDS; i++) {
+    leds[i].nscale8(192);
+  }
+}
+
+
 void setup() {
-  delay(1000); // 3 second delay for recovery
+  delay(1000);
   Serial.begin(9600);
   Serial.println("resetting");
   
@@ -47,18 +69,22 @@ void setup() {
 }
 
 
-// List of patterns to cycle through.  Each is defined as a separate function below.
-typedef void (*SimplePatternList[])();
-//SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { rainbow, juggle, confetti };
+void flushChannelBuffer() {
+  channel_str[curr_char_idx] = 0;
+  gCurrentPatternNumber_tmp = atoi(channel_str);
+  Serial.println(gCurrentPatternNumber_tmp);
+  if (gCurrentPatternNumber_tmp < channels_nbr) {
+    gCurrentPatternNumber = gCurrentPatternNumber_tmp;
+  }
+  curr_char_idx = 0;
+}
 
-uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
-uint8_t gHue = 0; // rotating "base color" used by many of the patterns
-
-
-void fadeall() {
-  for(int i = 0; i < NUM_LEDS; i++) {
-    leds[i].nscale8(192);
+void addToChannelBuffer(char c) {
+  if ( curr_char_idx < MAX_CHANNELS_IDX ) {
+    channel_str[curr_char_idx++] = c;
+    if (curr_char_idx == MAX_CHANNELS_IDX) {
+      flushChannelBuffer();
+    }
   }
 }
 
@@ -93,7 +119,62 @@ void checkIRSignal()
         nextPattern();
         break;
         
-      case 0xFF22DD:  
+      case 0xFF629D:
+      case 0x511DBB:
+        flushChannelBuffer();
+        break;
+
+      case 0xFF6897:
+      case 0xC101E57B:
+        addToChannelBuffer('0');
+        break;
+
+      case 0xFF30CF:
+      case 0x9716BE3F:
+        addToChannelBuffer('1');
+        break;
+
+      case 0xFF18E7:
+      case 0x3D9AE3F7:
+        addToChannelBuffer('2');
+        break;
+
+      case 0xFF7A85:
+      case 0x6182021B:
+        addToChannelBuffer('3');
+        break;
+
+      case 0xFF10EF:
+      case 0x8C22657B:
+        addToChannelBuffer('4');
+        break;
+
+      case 0xFF38C7:
+      case 0x488F3CBB:
+        addToChannelBuffer('5');
+        break;
+
+      case 0xFF5AA5:
+      case 0x449E79F:
+        addToChannelBuffer('6');
+        break;
+
+      case 0xFF42BD:
+      case 0x32C6FDF7:
+        addToChannelBuffer('7');
+        break;
+
+      case 0xFF4AB5:
+      case 0x1BC0157B:
+        addToChannelBuffer('8');
+        break;
+
+      case 0xFF52AD:
+      case 0x3EC3FC1B:
+        addToChannelBuffer('9');
+        break;
+
+      case 0xFF22DD:
       case 0x52A3D41F:
         if (fps_idx > 0) { fps_idx -= 1; }     // no loop here, there might be a long FastLED.delay
         break;
@@ -135,20 +216,17 @@ void loop()
   }
 }
 
-#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
-
 void prevPattern() {
-  if (gCurrentPatternNumber == 0) { gCurrentPatternNumber = ARRAY_SIZE(gPatterns) - 1; }
+  if (gCurrentPatternNumber == 0) { gCurrentPatternNumber = channels_nbr - 1; }
   else { gCurrentPatternNumber -= 1; }
 }
   
 void nextPattern() {
-  gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE(gPatterns);
+  gCurrentPatternNumber = (gCurrentPatternNumber + 1) % channels_nbr;
 }
 
 void spark() 
 {
-  //randHue = random8();
   for(int i = 0; i < NUM_LEDS; i++) {
     leds[i] = CHSV(gHue, 255, 255);
     }
