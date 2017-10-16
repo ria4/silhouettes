@@ -17,15 +17,16 @@ FASTLED_USING_NAMESPACE
 #define STRIP_PIN     6
 
 #define INIT_BRIGHTNESS             15
-#define FRAMES_PER_SECOND_MODES     4
-#define INIT_FPS_IDX                1
+#define FRAMES_PER_SECOND_MODES     5
+#define INIT_FPS_IDX                2
 #define MAX_CHANNELS_IDX            1		// let's try not to compute a log10...
 
-const int fps_arr[FRAMES_PER_SECOND_MODES] = { 50, 120, 1000, 10000 };
+const int fps_arr[FRAMES_PER_SECOND_MODES] = { 2, 50, 120, 1000, 10000 };
 
 uint8_t brightness;
 uint8_t fps_idx;
 uint8_t pos_shift = 0;
+uint8_t pos_shifted;
 uint8_t hue_shift = 0;
 
 IRrecv irrecv(IRRCV_PIN);
@@ -40,7 +41,7 @@ CRGB leds[NUM_LEDS];
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 //SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { import_sd, one, rainbow, juggle, confetti };
+SimplePatternList gPatterns = { read_sd, one, rainbow, juggle, confetti };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
 uint8_t gCurrentPatternNumber = 0;
@@ -131,109 +132,85 @@ void checkIRSignal()
       
       case 0xFFE01F:  
       case 0xF076C13B:
-        if (brightness >= 5) {
-          brightness -= 5;
-        }
-        FastLED.setBrightness(brightness);
-        break;
+        if (brightness >= 5) { brightness -= 5; }
+        FastLED.setBrightness(brightness); break;
       
       case 0xFFA857:  
       case 0xA3C8EDDB:
-        if (brightness <= 250) {
-          brightness += 5;
-        }
-        FastLED.setBrightness(brightness);
-        break;
+        if (brightness <= 250) { brightness += 5; }
+        FastLED.setBrightness(brightness); break;
         
       case 0xFFA25D:  
       case 0xE318261B:
-        prevPattern();
-        break;
+        prevPattern(); break;
         
       case 0xFFE21D:  
       case 0xEE886D7F:
-        nextPattern();
-        break;
+        nextPattern(); break;
         
       case 0xFF629D:
       case 0x511DBB:
-        flushChannelBuffer();
-        break;
+        flushChannelBuffer(); break;
         
       case 0xFF9867:  
       case 0x97483BFB:
-        flushPosShiftBuffer();
-        break;
+        flushPosShiftBuffer(); break;
 
       case 0xFFB04F:  
       case 0xF0C41643:
-        flushHueShiftBuffer();
-        break;
+        flushHueShiftBuffer(); break;
         
       case 0xFF6897:
       case 0xC101E57B:
-        addToBuffer('0');
-        break;
+        addToBuffer('0'); break;
 
       case 0xFF30CF:
       case 0x9716BE3F:
-        addToBuffer('1');
-        break;
+        addToBuffer('1'); break;
 
       case 0xFF18E7:
       case 0x3D9AE3F7:
-        addToBuffer('2');
-        break;
+        addToBuffer('2'); break;
 
       case 0xFF7A85:
       case 0x6182021B:
-        addToBuffer('3');
-        break;
+        addToBuffer('3'); break;
 
       case 0xFF10EF:
       case 0x8C22657B:
-        addToBuffer('4');
-        break;
+        addToBuffer('4'); break;
 
       case 0xFF38C7:
       case 0x488F3CBB:
-        addToBuffer('5');
-        break;
+        addToBuffer('5'); break;
 
       case 0xFF5AA5:
       case 0x449E79F:
-        addToBuffer('6');
-        break;
+        addToBuffer('6'); break;
 
       case 0xFF42BD:
       case 0x32C6FDF7:
-        addToBuffer('7');
-        break;
+        addToBuffer('7'); break;
 
       case 0xFF4AB5:
       case 0x1BC0157B:
-        addToBuffer('8');
-        break;
+        addToBuffer('8'); break;
 
       case 0xFF52AD:
       case 0x3EC3FC1B:
-        addToBuffer('9');
-        break;
+        addToBuffer('9'); break;
 
       case 0xFF22DD:
       case 0x52A3D41F:
-        if (fps_idx > 0) { fps_idx -= 1; }     // no loop here, there might be a long FastLED.delay
-        break;
+        if (fps_idx > 0) { fps_idx -= 1; } break;     // no loop here, there might be a long FastLED.delay
   
       case 0xFF02FD:  
       case 0xD7E84B1B:
-        if (fps_idx < FRAMES_PER_SECOND_MODES - 1) { fps_idx += 1; };
-        break;
+        if (fps_idx < FRAMES_PER_SECOND_MODES - 1) { fps_idx += 1; }; break;
   
       case 0xFFC23D:  
       case 0x20FE4DBB:
-        pause = !pause;
-        break;
+        pause = !pause; break;
         
       default:
         Serial.println(results.value, HEX);
@@ -256,7 +233,9 @@ void loop()
   
   if (!pause) {
     FastLED.show();
-    FastLED.delay(1000/fps_arr[fps_idx]);
+    // long delays with FastLED cause long periods when the IRremote cannot catch interrupts
+    //FastLED.delay(1000/fps_arr[fps_idx]);
+    delay(1000/fps_arr[fps_idx]);
   }
 }
 
@@ -287,22 +266,22 @@ void spark()
   }  
 }
 
-void import_sd()
+void read_sd()
 {
   if (!silhouette) {
-    silhouette = SD.open("test.txt", FILE_READ);
+    silhouette = SD.open("test2.txt", FILE_READ);
     sd_params = silhouette.read();
     sd_loop = (sd_params >> 7);
     sd_frames_nbr = (silhouette.read() << 8) + silhouette.read();
   }
 
   if (silhouette && silhouette.available()) {
-    for (int j=0; j<NUM_LEDS; j++) {                // we do not check if it is the right format!
+    for (int j=pos_shift; j<NUM_LEDS+pos_shift; j++) {   // we do not check if it is the right format!
       r = silhouette.read();
       g = silhouette.read();
       b = silhouette.read();
-      leds[j] = CRGB(r, g, b);		// note that CRGB class would first retrieve b, then g, then r
-      if (j < 3) { Serial.print(leds[j].red); Serial.print(leds[j].g); Serial.println(leds[j].b); }
+      pos_shifted = j % NUM_LEDS;
+      leds[pos_shifted] = CRGB(r, g, b);		// note that CRGB class would first retrieve b, then g, then r
     }
     sd_frame_idx++;
   }
@@ -320,8 +299,8 @@ void import_sd()
 
 void one()
 {
-  uint8_t pos = (0 + pos_shift) % NUM_LEDS;
-  leds[pos] = CHSV(hue_shift, 255, 255);
+  pos_shifted = (0 + pos_shift) % NUM_LEDS;
+  leds[pos_shifted] = CHSV(hue_shift, 255, 255);
 }
 
 void rainbow() 
