@@ -41,7 +41,7 @@ CRGB leds[NUM_LEDS];
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 //SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { read_sd, one, rainbow, juggle, confetti };
+SimplePatternList gPatterns = { read_sd, black, one, rainbow, juggle, confetti };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
 uint8_t gCurrentPatternNumber = 0;
@@ -52,6 +52,8 @@ char buffer[3];
 uint8_t curr_char_idx = 0;
 
 File silhouette;
+char silhouette_name[12];
+int sd_idx;
 uint8_t sd_params;
 bool sd_loop;
 int sd_frames_nbr;
@@ -105,6 +107,10 @@ void flushChannelBuffer() {
   gCurrentPatternNumber_tmp = atoi(buffer);
   if (gCurrentPatternNumber_tmp < channels_nbr) {
     gCurrentPatternNumber = gCurrentPatternNumber_tmp;
+  } else {
+    if (set_sd_silhouette(gCurrentPatternNumber_tmp)) {
+      gCurrentPatternNumber = 0;
+    }
   }
   curr_char_idx = 0;
   FastLED.clear();
@@ -241,13 +247,26 @@ void loop()
 
 void prevPattern() {
   FastLED.clear();
-  if (gCurrentPatternNumber == 0) { gCurrentPatternNumber = channels_nbr - 1; }
-  else { gCurrentPatternNumber -= 1; }
+  if (gCurrentPatternNumber == 0) {
+    if (!set_sd_silhouette(sd_idx - 1)) {
+      gCurrentPatternNumber = channels_nbr - 1;
+    }
+  } else {
+    if (gCurrentPatternNumber == 1) {
+      if (!silhouette) { gCurrentPatternNumber = channels_nbr - 1;
+      } else { gCurrentPatternNumber--; }
+    } else { gCurrentPatternNumber--; }
+  }
 }
   
 void nextPattern() {
   FastLED.clear();
-  gCurrentPatternNumber = (gCurrentPatternNumber + 1) % channels_nbr;
+  if (gCurrentPatternNumber == 0) {
+    if (!set_sd_silhouette(sd_idx + 1)) {
+      gCurrentPatternNumber = 1;
+    }
+  } else { gCurrentPatternNumber = (gCurrentPatternNumber + 1) % channels_nbr; }
+           // if there is no silhouette, read_sd will further shift to 1
 }
 
 void spark() 
@@ -266,13 +285,35 @@ void spark()
   }  
 }
 
-void read_sd()
-{
-  if (!silhouette) {
-    silhouette = SD.open("test2.txt", FILE_READ);
+bool set_sd_silhouette(int n) {
+  if (silhouette) { silhouette.close(); }
+  strcpy(silhouette_name, "SILH_");
+  sprintf(silhouette_name + 5, "%03d", n);
+  strcpy(silhouette_name + 8, ".RAW");
+  silhouette = SD.open(silhouette_name, FILE_READ);
+  if (silhouette) {
+    Serial.print("file opened ");
+    Serial.println(silhouette_name);
+    sd_idx = n;
     sd_params = silhouette.read();
     sd_loop = (sd_params >> 7);
     sd_frames_nbr = (silhouette.read() << 8) + silhouette.read();
+    return true;
+  } else {
+    Serial.print("failed to open file ");
+    Serial.println(silhouette_name);
+    if (sd_idx) {
+      set_sd_silhouette(sd_idx);      // restore previous valid file
+    }
+    return false;
+  }
+}
+
+void read_sd()
+{
+  if (!silhouette) {
+    gCurrentPatternNumber = 1;
+    return;
   }
 
   if (silhouette && silhouette.available()) {
@@ -295,6 +336,11 @@ void read_sd()
       pause = true;
     }
   }
+}
+
+void black()
+{
+  FastLED.clear();
 }
 
 void one()
