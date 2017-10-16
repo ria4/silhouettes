@@ -1,5 +1,6 @@
 #include "FastLED.h"
 #include "IRremote.h"
+#include "SD.h"
 
 FASTLED_USING_NAMESPACE
 
@@ -39,7 +40,7 @@ CRGB leds[NUM_LEDS];
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 //SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { one, rainbow, juggle, confetti };
+SimplePatternList gPatterns = { import_sd, one, rainbow, juggle, confetti };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
 uint8_t gCurrentPatternNumber = 0;
@@ -49,11 +50,18 @@ uint8_t gHue = 0; // rotating "base color" used by many of the patterns
 char buffer[3];
 uint8_t curr_char_idx = 0;
 
-typedef struct {
-  uint8_t params;
-  int frames_nbr;
-  CRGB frames[][NUM_LEDS];
-} silhouette;
+File silhouette;
+uint8_t sd_params;
+bool sd_loop;
+int sd_frames_nbr;
+int sd_frame_idx;
+uint8_t r, g, b;
+// it seems the arduino is not able to handle so much memory
+//typedef struct {
+//  uint8_t params;
+//  int frames_nbr;
+//  CRGB frames[][NUM_LEDS];
+//} silhouette;
 
 
 void fadeall() {
@@ -74,6 +82,14 @@ void setup() {
   FastLED.setBrightness(brightness);
   
   irrecv.enableIRIn();
+
+  Serial.print("Try to init SD card... ");
+  pinMode(10, OUTPUT);
+  if (!SD.begin(10)) {
+    Serial.println("No SD card found, or init failed.");
+    return;
+  }
+  Serial.println("Init OK.");
 }
 
 
@@ -269,6 +285,37 @@ void spark()
     fadeall();
     delay(50);
   }  
+}
+
+void import_sd()
+{
+  if (!silhouette) {
+    silhouette = SD.open("test.txt", FILE_READ);
+    sd_params = silhouette.read();
+    sd_loop = (sd_params >> 7);
+    sd_frames_nbr = (silhouette.read() << 8) + silhouette.read();
+  }
+
+  if (silhouette && silhouette.available()) {
+    for (int j=0; j<NUM_LEDS; j++) {                // we do not check if it is the right format!
+      r = silhouette.read();
+      g = silhouette.read();
+      b = silhouette.read();
+      leds[j] = CRGB(r, g, b);		// note that CRGB class would first retrieve b, then g, then r
+      if (j < 3) { Serial.print(leds[j].red); Serial.print(leds[j].g); Serial.println(leds[j].b); }
+    }
+    sd_frame_idx++;
+  }
+
+  if (sd_frame_idx == sd_frames_nbr) {
+    sd_frame_idx = 0;
+    if (sd_loop) {
+      silhouette.seek(3);
+    } else {
+      silhouette.close();
+      pause = true;
+    }
+  }
 }
 
 void one()
