@@ -18,8 +18,9 @@ FASTLED_USING_NAMESPACE
 
 #define INIT_BRIGHTNESS             15
 #define FRAMES_PER_SECOND_MODES     5
-#define INIT_FPS_IDX                2
+#define INIT_FPS_IDX                1
 #define MAX_CHANNELS_IDX            1		// let's try not to compute a log10...
+#define CHANGE_SIG_LENGTH           500
 
 const int fps_arr[FRAMES_PER_SECOND_MODES] = { 2, 50, 120, 1000, 10000 };
 
@@ -41,11 +42,11 @@ CRGB leds[NUM_LEDS];
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 //SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { read_sd, black, one, rainbow, juggle, confetti };
+SimplePatternList gPatterns = { read_sd, one, rainbow };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
-uint8_t gCurrentPatternNumber = 0;
-uint8_t gCurrentPatternNumber_tmp;
+uint8_t pattern_idx = 0;
+uint8_t pattern_idx_tmp;
 uint8_t gHue = 0; // rotating "base color" used by many of the patterns
 
 char buffer[3];
@@ -77,22 +78,22 @@ void fadeall() {
 void setup() {
   delay(1000);
   Serial.begin(9600);
-  Serial.println("resetting");
-  
+  Serial.println("Resetting...");
+
   FastLED.addLeds<LED_TYPE,STRIP_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
   brightness = INIT_BRIGHTNESS;
   fps_idx = INIT_FPS_IDX;
   FastLED.setBrightness(brightness);
-  
+
   irrecv.enableIRIn();
 
-  Serial.print("Try to init SD card... ");
+  Serial.print("Trying to init SD card... ");
   pinMode(10, OUTPUT);
   if (!SD.begin(10)) {
-    Serial.println("No SD card found, or init failed.");
+    Serial.println("no card found, or init failed!");
     return;
   }
-  Serial.println("Init OK.");
+  Serial.println("OK.");
 }
 
 
@@ -104,16 +105,10 @@ void addToBuffer(char c) {
 
 void flushChannelBuffer() {
   buffer[curr_char_idx] = 0;
-  gCurrentPatternNumber_tmp = atoi(buffer);
-  if (gCurrentPatternNumber_tmp < channels_nbr) {
-    gCurrentPatternNumber = gCurrentPatternNumber_tmp;
-  } else {
-    if (set_sd_silhouette(gCurrentPatternNumber_tmp)) {
-      gCurrentPatternNumber = 0;
-    }
-  }
+  pattern_idx_tmp = atoi(buffer);
+  if (pattern_idx_tmp < channels_nbr) { pattern_idx = pattern_idx_tmp; signal(255); }
+  else { if (set_sd_silhouette(pattern_idx_tmp)) { pattern_idx = 0; signal(0); } }
   curr_char_idx = 0;
-  FastLED.clear();
 }
 
 void flushPosShiftBuffer() {
@@ -135,37 +130,37 @@ void checkIRSignal()
 {
   if (irrecv.decode(&results)) {
     switch(results.value) {
-      
-      case 0xFFE01F:  
+
+      case 0xFFE01F:
       case 0xF076C13B:
         if (brightness >= 5) { brightness -= 5; }
         FastLED.setBrightness(brightness); break;
-      
-      case 0xFFA857:  
+
+      case 0xFFA857:
       case 0xA3C8EDDB:
         if (brightness <= 250) { brightness += 5; }
         FastLED.setBrightness(brightness); break;
-        
-      case 0xFFA25D:  
+
+      case 0xFFA25D:
       case 0xE318261B:
         prevPattern(); break;
-        
-      case 0xFFE21D:  
+
+      case 0xFFE21D:
       case 0xEE886D7F:
         nextPattern(); break;
-        
+
       case 0xFF629D:
       case 0x511DBB:
         flushChannelBuffer(); break;
-        
-      case 0xFF9867:  
+
+      case 0xFF9867:
       case 0x97483BFB:
         flushPosShiftBuffer(); break;
 
-      case 0xFFB04F:  
+      case 0xFFB04F:
       case 0xF0C41643:
         flushHueShiftBuffer(); break;
-        
+
       case 0xFF6897:
       case 0xC101E57B:
         addToBuffer('0'); break;
@@ -209,34 +204,34 @@ void checkIRSignal()
       case 0xFF22DD:
       case 0x52A3D41F:
         if (fps_idx > 0) { fps_idx -= 1; } break;     // no loop here, there might be a long FastLED.delay
-  
-      case 0xFF02FD:  
+
+      case 0xFF02FD:
       case 0xD7E84B1B:
         if (fps_idx < FRAMES_PER_SECOND_MODES - 1) { fps_idx += 1; }; break;
-  
-      case 0xFFC23D:  
+
+      case 0xFFC23D:
       case 0x20FE4DBB:
         pause = !pause; break;
-        
+
       default:
         Serial.println(results.value, HEX);
-        
+
     }
-    delay(500);
+    delay(200);
     irrecv.resume();
   }
-}  
+}
 
 void loop()
 {
   if (!pause) {
-    gPatterns[gCurrentPatternNumber]();
+    gPatterns[pattern_idx]();
     EVERY_N_MILLISECONDS( 30 ) { gHue++; } // slowly cycle the "base color" through the rainbow
   }
-  
+
   while (!irrecv.isIdle());
   checkIRSignal();
-  
+
   if (!pause) {
     FastLED.show();
     // long delays with FastLED cause long periods when the IRremote cannot catch interrupts
@@ -245,31 +240,43 @@ void loop()
   }
 }
 
-void prevPattern() {
+// brief signal when a new pattern is loaded: blue for SD, red for programmatic
+void signal(uint8_t rb) {
   FastLED.clear();
-  if (gCurrentPatternNumber == 0) {
-    if (!set_sd_silhouette(sd_idx - 1)) {
-      gCurrentPatternNumber = channels_nbr - 1;
-    }
-  } else {
-    if (gCurrentPatternNumber == 1) {
-      if (!silhouette) { gCurrentPatternNumber = channels_nbr - 1;
-      } else { gCurrentPatternNumber--; }
-    } else { gCurrentPatternNumber--; }
-  }
-}
-  
-void nextPattern() {
-  FastLED.clear();
-  if (gCurrentPatternNumber == 0) {
-    if (!set_sd_silhouette(sd_idx + 1)) {
-      gCurrentPatternNumber = 1;
-    }
-  } else { gCurrentPatternNumber = (gCurrentPatternNumber + 1) % channels_nbr; }
-           // if there is no silhouette, read_sd will further shift to 1
+  leds[0] = CRGB(rb, 0, 255-rb);
+  FastLED.show();
+  delay(CHANGE_SIG_LENGTH);
+  leds[0] = CRGB(0, 0, 0);
+  FastLED.show();
+  pause = true;
 }
 
-void spark() 
+void prevPattern() {
+  if (pattern_idx == 0) {
+    if (set_sd_silhouette(sd_idx - 1)) { signal(0); return; }
+    else { pattern_idx = channels_nbr - 1; } }
+  else {
+    if (pattern_idx == 1) {
+      if (set_sd_silhouette(sd_idx)) { pattern_idx = 0; signal(0); return; }
+      else { pattern_idx = channels_nbr - 1; } }
+    else { pattern_idx--; } }
+  signal(255);
+}
+
+void nextPattern() {
+  if (pattern_idx == 0) {
+    if (set_sd_silhouette(sd_idx + 1)) { signal(0); return; }
+    else { pattern_idx = 1; } }
+  else {
+    if (pattern_idx == channels_nbr - 1) {
+      if (set_sd_silhouette(sd_idx)) { pattern_idx = 0; signal(0); return; }
+      else { pattern_idx = 0; } }
+    else { pattern_idx++; } }
+  signal(255);
+}
+
+/*
+void spark()
 {
   for(int i = 0; i < NUM_LEDS; i++) {
     leds[i] = CHSV(gHue, 255, 255);
@@ -279,10 +286,18 @@ void spark()
   delay(50);
 
   for(int i = 0; i < 100; i++) {
-    FastLED.show(); 
+    FastLED.show();
     fadeall();
     delay(50);
-  }  
+  }
+}
+*/
+
+int freeRam()
+{
+  extern int __heap_start, *__brkval;
+  int v;
+  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
 }
 
 bool set_sd_silhouette(int n) {
@@ -292,7 +307,7 @@ bool set_sd_silhouette(int n) {
   strcpy(silhouette_name + 8, ".RAW");
   silhouette = SD.open(silhouette_name, FILE_READ);
   if (silhouette) {
-    Serial.print("file opened ");
+    Serial.print("Opened ");
     Serial.println(silhouette_name);
     sd_idx = n;
     sd_params = silhouette.read();
@@ -300,22 +315,27 @@ bool set_sd_silhouette(int n) {
     sd_frames_nbr = (silhouette.read() << 8) + silhouette.read();
     return true;
   } else {
-    Serial.print("failed to open file ");
+    Serial.print("Failed to open ");
     Serial.println(silhouette_name);
-    if (sd_idx) {
-      set_sd_silhouette(sd_idx);      // restore previous valid file
-    }
+    //if (sd_idx) {
+    //  set_sd_silhouette(sd_idx);      // restore previous valid file
+    //}
+    // TODO we should not leave a silhouette open
     return false;
   }
 }
 
 void read_sd()
 {
-  if (!silhouette) {
-    gCurrentPatternNumber = 1;
+  if ((sd_idx == 0) || (!silhouette && !set_sd_silhouette(sd_idx))) {
+    pattern_idx = 1;
     return;
   }
 
+  //if (silhouette) { return; }
+
+  Serial.print("Available from SD: ");
+  Serial.println(silhouette.available());
   if (silhouette && silhouette.available()) {
     for (int j=pos_shift; j<NUM_LEDS+pos_shift; j++) {   // we do not check if it is the right format!
       r = silhouette.read();
@@ -324,6 +344,8 @@ void read_sd()
       pos_shifted = j % NUM_LEDS;
       leds[pos_shifted] = CRGB(r, g, b);		// note that CRGB class would first retrieve b, then g, then r
     }
+    Serial.print("Remaining SRAM: ");
+    Serial.println(freeRam());
     sd_frame_idx++;
   }
 
@@ -333,6 +355,8 @@ void read_sd()
       silhouette.seek(3);
     } else {
       silhouette.close();
+      FastLED.clear();
+      FastLED.show();
       pause = true;
     }
   }
@@ -345,32 +369,32 @@ void black()
 
 void one()
 {
-  pos_shifted = (0 + pos_shift) % NUM_LEDS;
+  pos_shifted = (2 + pos_shift) % NUM_LEDS;
   leds[pos_shifted] = CHSV(hue_shift, 255, 255);
 }
 
-void rainbow() 
+void rainbow()
 {
   fill_rainbow(leds, NUM_LEDS, gHue, 7);
 }
 
 /*
-void rainbowWithGlitter() 
+void rainbowWithGlitter()
 {
   // built-in FastLED rainbow, plus some random sparkly glitter
   rainbow();
   addGlitter(80);
 }
 
-void addGlitter( fract8 chanceOfGlitter) 
+void addGlitter( fract8 chanceOfGlitter)
 {
   if( random8() < chanceOfGlitter) {
     leds[ random16(NUM_LEDS) ] += CRGB::White;
   }
 }
-*/
 
-void splash() 
+
+void splash()
 {
   // random colored splashes that fade smoothly
   fadeToBlackBy(leds, NUM_LEDS, 1);
@@ -386,7 +410,7 @@ void splash()
   }
 }
 
-void confetti() 
+void confetti()
 {
   // random colored speckles that blink in and fade smoothly
   fadeToBlackBy(leds, NUM_LEDS, 10);
@@ -421,7 +445,7 @@ void bpm()
 void juggle() {
   // eight colored dots, weaving in and out of sync with each other
   fadeToBlackBy( leds, NUM_LEDS, 20);
-  
+
   byte dothue = 0;
   for( int i = 0; i < 8; i++) {
     int pulse = (i+13)/3;
@@ -429,4 +453,5 @@ void juggle() {
     dothue += 32;
   }
 }
+*/
 
