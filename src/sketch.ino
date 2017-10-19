@@ -8,9 +8,9 @@ FASTLED_USING_NAMESPACE
 #warning "Requires FastLED 3.1 or later; check github for latest code."
 #endif
 
-#define LED_TYPE    WS2812
+#define LED_TYPE    WS2812B
 #define COLOR_ORDER GRB
-#define NUM_LEDS    60
+#define NUM_LEDS    144
 
 #define BUTTON_PIN    2
 #define IRRCV_PIN     9
@@ -22,6 +22,7 @@ FASTLED_USING_NAMESPACE
 #define MAX_CHANNELS_IDX            1		// let's try not to compute a log10...
 #define CHANGE_SIG_LENGTH           500
 
+// the frame rate for 144 leds will cap by itself
 const int fps_arr[FRAMES_PER_SECOND_MODES] = { 2, 50, 120, 1000, 10000 };
 
 uint8_t brightness;
@@ -60,12 +61,6 @@ bool sd_loop;
 int sd_frames_nbr;
 int sd_frame_idx;
 uint8_t r, g, b;
-// it seems the arduino is not able to handle so much memory
-//typedef struct {
-//  uint8_t params;
-//  int frames_nbr;
-//  CRGB frames[][NUM_LEDS];
-//} silhouette;
 
 
 void fadeall() {
@@ -78,7 +73,7 @@ void fadeall() {
 void setup() {
   delay(1000);
   Serial.begin(9600);
-  Serial.println("Resetting...");
+  Serial.println(F("Resetting..."));
 
   FastLED.addLeds<LED_TYPE,STRIP_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
   brightness = INIT_BRIGHTNESS;
@@ -87,13 +82,13 @@ void setup() {
 
   irrecv.enableIRIn();
 
-  Serial.print("Trying to init SD card... ");
+  Serial.print(F("Trying to init SD card... "));
   pinMode(10, OUTPUT);
   if (!SD.begin(10)) {
-    Serial.println("no card found, or init failed!");
+    Serial.println(F("init failed!"));
     return;
   }
-  Serial.println("OK.");
+  Serial.println("OK!");
 }
 
 
@@ -307,7 +302,7 @@ bool set_sd_silhouette(int n) {
   strcpy(silhouette_name + 8, ".RAW");
   silhouette = SD.open(silhouette_name, FILE_READ);
   if (silhouette) {
-    Serial.print("Opened ");
+    Serial.print(F("Opened "));
     Serial.println(silhouette_name);
     sd_idx = n;
     sd_params = silhouette.read();
@@ -315,12 +310,8 @@ bool set_sd_silhouette(int n) {
     sd_frames_nbr = (silhouette.read() << 8) + silhouette.read();
     return true;
   } else {
-    Serial.print("Failed to open ");
+    Serial.print(F("Failed to open "));
     Serial.println(silhouette_name);
-    //if (sd_idx) {
-    //  set_sd_silhouette(sd_idx);      // restore previous valid file
-    //}
-    // TODO we should not leave a silhouette open
     return false;
   }
 }
@@ -334,9 +325,11 @@ void read_sd()
 
   //if (silhouette) { return; }
 
-  Serial.print("Available from SD: ");
-  Serial.println(silhouette.available());
+  //Serial.print(F("Available from SD: "));
+  //Serial.println(silhouette.available());
   if (silhouette && silhouette.available()) {
+    Serial.print(F("Remaining SRAM: "));
+    Serial.println(freeRam());
     for (int j=pos_shift; j<NUM_LEDS+pos_shift; j++) {   // we do not check if it is the right format!
       r = silhouette.read();
       g = silhouette.read();
@@ -344,8 +337,6 @@ void read_sd()
       pos_shifted = j % NUM_LEDS;
       leds[pos_shifted] = CRGB(r, g, b);		// note that CRGB class would first retrieve b, then g, then r
     }
-    Serial.print("Remaining SRAM: ");
-    Serial.println(freeRam());
     sd_frame_idx++;
   }
 
