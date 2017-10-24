@@ -17,13 +17,13 @@ FASTLED_USING_NAMESPACE
 #define STRIP_PIN     6
 
 #define INIT_BRIGHTNESS             15
-#define FRAMES_PER_SECOND_MODES     5
-#define INIT_FPS_IDX                1
+#define FRAMES_PER_SECOND_MODES     6
+#define INIT_FPS_IDX                2
 #define MAX_CHANNELS_IDX            1		// let's try not to compute a log10...
 #define CHANGE_SIG_LENGTH           500
 
 // the frame rate for 144 leds will cap by itself
-const int fps_arr[FRAMES_PER_SECOND_MODES] = { 2, 50, 120, 1000, 10000 };
+const int fps_arr[FRAMES_PER_SECOND_MODES] = { 2, 12, 50, 200, 1000, 5000 };
 
 uint8_t brightness;
 uint8_t fps_idx;
@@ -43,7 +43,7 @@ CRGB leds[NUM_LEDS];
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 //SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { read_sd, one, rainbow };
+SimplePatternList gPatterns = { read_sd, point, line, wave, gradient, rainbow };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
 uint8_t pattern_idx = 0;
@@ -72,8 +72,8 @@ void fadeall() {
 
 void setup() {
   delay(1000);
-  Serial.begin(9600);
-  Serial.println(F("Resetting..."));
+  //Serial.begin(9600);
+  //Serial.println(F("Resetting..."));
 
   FastLED.addLeds<LED_TYPE,STRIP_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
   brightness = INIT_BRIGHTNESS;
@@ -82,13 +82,13 @@ void setup() {
 
   irrecv.enableIRIn();
 
-  Serial.print(F("Trying to init SD card... "));
+  //Serial.print(F("Trying to init SD card... "));
   pinMode(10, OUTPUT);
   if (!SD.begin(10)) {
-    Serial.println(F("init failed!"));
+    //Serial.println(F("init failed!"));
     return;
   }
-  Serial.println("OK!");
+  //Serial.println("OK!");
 }
 
 
@@ -209,7 +209,7 @@ void checkIRSignal()
         pause = !pause; break;
 
       default:
-        Serial.println(results.value, HEX);
+        break; //Serial.println(results.value, HEX);
 
     }
     delay(200);
@@ -302,16 +302,16 @@ bool set_sd_silhouette(int n) {
   strcpy(silhouette_name + 8, ".RAW");
   silhouette = SD.open(silhouette_name, FILE_READ);
   if (silhouette) {
-    Serial.print(F("Opened "));
-    Serial.println(silhouette_name);
+    //Serial.print(F("Opened "));
+    //Serial.println(silhouette_name);
     sd_idx = n;
     sd_params = silhouette.read();
     sd_loop = (sd_params >> 7);
     sd_frames_nbr = (silhouette.read() << 8) + silhouette.read();
     return true;
   } else {
-    Serial.print(F("Failed to open "));
-    Serial.println(silhouette_name);
+    //Serial.print(F("Failed to open "));
+    //Serial.println(silhouette_name);
     return false;
   }
 }
@@ -328,8 +328,8 @@ void read_sd()
   //Serial.print(F("Available from SD: "));
   //Serial.println(silhouette.available());
   if (silhouette && silhouette.available()) {
-    Serial.print(F("Remaining SRAM: "));
-    Serial.println(freeRam());
+    //Serial.print(F("Remaining SRAM: "));
+    //Serial.println(freeRam());
     for (int j=pos_shift; j<NUM_LEDS+pos_shift; j++) {   // we do not check if it is the right format!
       r = silhouette.read();
       g = silhouette.read();
@@ -358,10 +358,30 @@ void black()
   FastLED.clear();
 }
 
-void one()
+void point()
 {
-  pos_shifted = (2 + pos_shift) % NUM_LEDS;
+  pos_shifted = (1 + pos_shift) % NUM_LEDS;
   leds[pos_shifted] = CHSV(hue_shift, 255, 255);
+}
+
+void line()
+{
+  pos_shifted = pos_shift % NUM_LEDS;
+  fill_solid(&(leds[pos_shifted]), NUM_LEDS - pos_shifted, CHSV(hue_shift, 255, 255));
+}
+
+void wave()
+{
+  uint8_t BeatsPerMinute = fps_arr[fps_idx];
+  uint8_t beat = beatsin8( BeatsPerMinute, 0, 255);
+  fill_solid(leds, NUM_LEDS, CHSV(hue_shift, 255, beat));
+}
+
+void gradient()
+{
+  uint8_t BeatsPerMinute = fps_arr[fps_idx];
+  uint8_t beat = beatsin8( BeatsPerMinute, 0, 100);
+  fill_gradient(leds, NUM_LEDS, CHSV(hue_shift, 255, 255), CHSV(hue_shift+beat, 255, 255));
 }
 
 void rainbow()
