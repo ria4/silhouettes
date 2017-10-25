@@ -34,6 +34,7 @@ uint8_t hue_shift = 0;
 IRrecv irrecv(IRRCV_PIN);
 decode_results results;
 boolean pause = false;
+boolean mirror = false;
 
 CRGB leds[NUM_LEDS];
 
@@ -204,9 +205,13 @@ void checkIRSignal()
       case 0xD7E84B1B:
         if (fps_idx < FRAMES_PER_SECOND_MODES - 1) { fps_idx += 1; }; break;
 
+      case 0xFF906F:
+      case 0xE5CFBD7F:
+        mirror = !mirror; break;
+
       case 0xFFC23D:
       case 0x20FE4DBB:
-        pause = !pause; break;
+        FastLED.clear(); FastLED.show(); pause = !pause; break;
 
       default:
         break; //Serial.println(results.value, HEX);
@@ -335,6 +340,7 @@ void read_sd()
       g = silhouette.read();
       b = silhouette.read();
       pos_shifted = j % NUM_LEDS;
+      if (mirror) { pos_shifted = NUM_LEDS - 1 - pos_shifted; }
       leds[pos_shifted] = CRGB(r, g, b);		// note that CRGB class would first retrieve b, then g, then r
     }
     sd_frame_idx++;
