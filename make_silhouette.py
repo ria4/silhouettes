@@ -8,6 +8,7 @@ from PIL import Image
 if len(sys.argv) < 4:
     print "Usage: ./resize.py img_file (leds_nbr|0) (frames_nbr|0) [rotate bit [loop bit]]"
     print "Except with rotate 1, width gets resized to leds_nbr, and height to frames_nbr."
+    print "Note that leds_nbr may be less than the whole strip length."
     exit()
 
 
@@ -51,6 +52,7 @@ if loop:
 else:
     res += '\0'
 
+res += struct.pack('>H', width)
 res += struct.pack('>H', height)
 
 pixels = list(img_new.getdata())
@@ -58,10 +60,11 @@ for (r, g, b) in pixels:
     res += chr(r) + chr(g) + chr(b)
 
 
-idx = img_name.rfind('.')
+idx1 = img_name.rfind('/')
+idx2 = img_name.rfind('.')
 rot_name = '_rot' if rotate else ''
 loop_name = '_loop' if loop else ''
-res_name = "%s%s%s_%dx%d.raw" % (img_name[:idx], rot_name, loop_name, width, height)
+res_name = "/home/mtu/silhouettes/fabrique/collection/%s%s%s_%dx%d.SIL" % (img_name[idx1+1:idx2], rot_name, loop_name, width, height)
 
 with open(res_name, 'wb') as f:
     f.write(res)

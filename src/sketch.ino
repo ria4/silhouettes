@@ -55,10 +55,11 @@ char buffer[3];
 uint8_t curr_char_idx = 0;
 
 File silhouette;
-char silhouette_name[12];
+char silhouette_name[7];
 int sd_idx;
 uint8_t sd_params;
 bool sd_loop;
+int sd_width;
 int sd_frames_nbr;
 int sd_frame_idx;
 uint8_t r, g, b;
@@ -302,9 +303,8 @@ int freeRam()
 
 bool set_sd_silhouette(int n) {
   if (silhouette) { silhouette.close(); }
-  strcpy(silhouette_name, "SILH_");
-  sprintf(silhouette_name + 5, "%03d", n);
-  strcpy(silhouette_name + 8, ".RAW");
+  sprintf(silhouette_name, "%03d", n);
+  strcpy(silhouette_name + 3, ".SIL");
   silhouette = SD.open(silhouette_name, FILE_READ);
   if (silhouette) {
     //Serial.print(F("Opened "));
@@ -312,6 +312,7 @@ bool set_sd_silhouette(int n) {
     sd_idx = n;
     sd_params = silhouette.read();
     sd_loop = (sd_params >> 7);
+    sd_width = (silhouette.read() << 8) + silhouette.read();
     sd_frames_nbr = (silhouette.read() << 8) + silhouette.read();
     return true;
   } else {
@@ -335,7 +336,7 @@ void read_sd()
   if (silhouette && silhouette.available()) {
     //Serial.print(F("Remaining SRAM: "));
     //Serial.println(freeRam());
-    for (int j=pos_shift; j<NUM_LEDS+pos_shift; j++) {   // we do not check if it is the right format!
+    for (int j=pos_shift; j<sd_width+pos_shift; j++) {
       r = silhouette.read();
       g = silhouette.read();
       b = silhouette.read();
@@ -349,7 +350,7 @@ void read_sd()
   if (sd_frame_idx == sd_frames_nbr) {
     sd_frame_idx = 0;
     if (sd_loop) {
-      silhouette.seek(3);
+      silhouette.seek(5);
     } else {
       silhouette.close();
       FastLED.clear();
