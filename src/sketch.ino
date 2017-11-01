@@ -312,6 +312,7 @@ bool set_sd_silhouette(int n) {
   if (silhouette) {
     //Serial.print(F("Opened "));
     //Serial.println(silhouette_name);
+    sd_frame_idx = 0;
     sd_idx = n;
     sd_params = silhouette.read();
     sd_loop = (sd_params >> 7);
