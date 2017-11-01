@@ -20,7 +20,7 @@ FASTLED_USING_NAMESPACE
 #define FRAMES_PER_SECOND_MODES     6
 #define INIT_FPS_IDX                2
 #define MAX_CHANNELS_IDX            1		// let's try not to compute a log10...
-#define CHANGE_SIG_LENGTH           500
+#define CHANGE_SIG_LENGTH           200
 
 // the frame rate for 144 leds will cap by itself
 const int fps_arr[FRAMES_PER_SECOND_MODES] = { 2, 12, 50, 200, 1000, 5000 };
@@ -90,7 +90,7 @@ void setup() {
     //Serial.println(F("init failed!"));
     return;
   }
-  //Serial.println("OK!");
+  //Serial.println(F("OK!"));
 }
 
 
@@ -102,8 +102,11 @@ void addToBuffer(char c) {
 
 void flushChannelBuffer() {
   buffer[curr_char_idx] = 0;
-  pattern_idx_tmp = atoi(buffer);
-  if (pattern_idx_tmp < channels_nbr) { pattern_idx = pattern_idx_tmp; signal(255); }
+  pattern_idx_tmp = atoi(buffer);       // note that no buffer raises a plain 0
+  if (pattern_idx_tmp < channels_nbr) {
+    pattern_idx = pattern_idx_tmp;
+    if (pattern_idx == 0) { signal(0); } else { signal(255); }
+  }
   else { if (set_sd_silhouette(pattern_idx_tmp)) { pattern_idx = 0; signal(0); } }
   curr_char_idx = 0;
 }
