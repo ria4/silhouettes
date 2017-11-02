@@ -20,7 +20,7 @@ FASTLED_USING_NAMESPACE
 #define FRAMES_PER_SECOND_MODES     6
 #define INIT_FPS_IDX                2
 #define MAX_CHANNELS_IDX            1		// let's try not to compute a log10...
-#define CHANGE_SIG_LENGTH           200
+#define CHANGE_SIG_LENGTH           100
 
 // the frame rate for 144 leds will cap by itself
 const int fps_arr[FRAMES_PER_SECOND_MODES] = { 2, 12, 50, 200, 1000, 5000 };
@@ -44,7 +44,7 @@ CRGB leds[NUM_LEDS];
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 //SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { read_sd, point, line, wave, gradient, rainbow };
+SimplePatternList gPatterns = { read_sd, point, line, wave, gradient, strikes, rainbow };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
 uint8_t pattern_idx = 0;
@@ -393,6 +393,43 @@ void gradient()
   uint8_t BeatsPerMinute = fps_arr[fps_idx];
   uint8_t beat = beatsin8( BeatsPerMinute, 0, 100);
   fill_gradient(leds, NUM_LEDS, CHSV(hue_shift, 255, 255), CHSV(hue_shift+beat, 255, 255));
+}
+
+void strikes()
+{
+  if ( random8() < 10 ) {
+    uint8_t start = random8(NUM_LEDS - 33);
+    uint8_t size = 25 + (7 - random8(14));
+    uint8_t hue;
+    if (pos_shift < 10) { hue = hue_shift; }
+    else { if (pos_shift < 100) { hue = hue_shift + (20 - random8(40)); }
+           else { if (pos_shift < 200) { hue = hue_shift + (35 - random8(70)); }
+                  else { hue = random8(); } } }
+    fill_solid(&(leds[start]), size, CHSV(hue, 255, 255));
+    FastLED.show();
+
+    uint8_t del;
+    switch(pos_shift % 10) {
+      case 4:
+        del = 2; break;
+      case 5:
+        del = 10; break;
+      case 6:
+        del = 20; break;
+      case 7:
+        del = 100; break;
+      case 8:
+        del = 500; break;
+      case 9:
+        del = 1000; break;
+      default:
+        del = 50;
+    }
+    delay(del);
+
+    FastLED.clear();
+    FastLED.show();
+  }
 }
 
 void rainbow()
