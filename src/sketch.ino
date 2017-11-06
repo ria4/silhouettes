@@ -20,7 +20,7 @@ FASTLED_USING_NAMESPACE
 #define FRAMES_PER_SECOND_MODES     6
 #define INIT_FPS_IDX                2
 #define MAX_CHANNELS_IDX            1		// let's try not to compute a log10...
-#define CHANGE_SIG_LENGTH           100
+#define CHANGE_SIG_LENGTH           50
 
 // the frame rate for 144 leds will cap by itself
 const int fps_arr[FRAMES_PER_SECOND_MODES] = { 2, 12, 50, 200, 1000, 5000 };
@@ -44,7 +44,7 @@ CRGB leds[NUM_LEDS];
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 //SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { read_sd, point, line, wave, gradient, strikes, rainbow };
+SimplePatternList gPatterns = { read_sd, point, line, wave, gradient, splash, strikes };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
 uint8_t pattern_idx = 0;
@@ -384,44 +384,55 @@ void line()
 void wave()
 {
   uint8_t BeatsPerMinute = fps_arr[fps_idx];
-  uint8_t beat = beatsin8( BeatsPerMinute, 0, 255);
+  uint8_t beat = beatsin8(BeatsPerMinute, 0, 255);
   fill_solid(leds, NUM_LEDS, CHSV(hue_shift, 255, beat));
 }
 
 void gradient()
 {
   uint8_t BeatsPerMinute = fps_arr[fps_idx];
-  uint8_t beat = beatsin8( BeatsPerMinute, 0, 100);
-  fill_gradient(leds, NUM_LEDS, CHSV(hue_shift, 255, 255), CHSV(hue_shift+beat, 255, 255));
+  uint8_t beat = beatsin8(BeatsPerMinute, 0, 100);
+  uint8_t beat2 = beatsin8(2*BeatsPerMinute, 0, 100);
+  fill_gradient(leds, NUM_LEDS, CHSV(hue_shift+beat2, 255, 255), CHSV(hue_shift+beat, 255, 255));
 }
 
 void strikes()
 {
-  if ( random8() < 10 ) {
-    uint8_t start = random8(NUM_LEDS - 33);
-    uint8_t size = 25 + (7 - random8(14));
+  if ( random8() < 20 ) {
+    uint8_t size;
+    switch((pos_shift / 10) % 10) {
+      case 1:
+        size = 1; break;
+      case 2:
+        size = 25; break;
+      case 3:
+        size = NUM_LEDS; break;
+      default:
+        size = 25 + (7 - random8(14));
+    }
+
     uint8_t hue;
-    if (pos_shift < 10) { hue = hue_shift; }
-    else { if (pos_shift < 100) { hue = hue_shift + (20 - random8(40)); }
-           else { if (pos_shift < 200) { hue = hue_shift + (35 - random8(70)); }
-                  else { hue = random8(); } } }
+    switch(pos_shift / 100) {
+      case 1:
+        hue = hue_shift + (30 - random8(60)); break;
+      case 2:
+        hue = random8(); break;
+      default:
+        hue = hue_shift;
+    }
+
+    uint8_t start = random8(NUM_LEDS - size);
     fill_solid(&(leds[start]), size, CHSV(hue, 255, 255));
     FastLED.show();
 
     uint8_t del;
     switch(pos_shift % 10) {
-      case 4:
+      case 1:
         del = 2; break;
-      case 5:
-        del = 10; break;
-      case 6:
-        del = 20; break;
-      case 7:
-        del = 100; break;
-      case 8:
+      case 2:
+        del = 15; break;
+      case 3:
         del = 500; break;
-      case 9:
-        del = 1000; break;
       default:
         del = 50;
     }
@@ -432,12 +443,12 @@ void strikes()
   }
 }
 
+/*
 void rainbow()
 {
   fill_rainbow(leds, NUM_LEDS, gHue, 7);
 }
 
-/*
 void rainbowWithGlitter()
 {
   // built-in FastLED rainbow, plus some random sparkly glitter
@@ -451,24 +462,34 @@ void addGlitter( fract8 chanceOfGlitter)
     leds[ random16(NUM_LEDS) ] += CRGB::White;
   }
 }
-
+*/
 
 void splash()
 {
   // random colored splashes that fade smoothly
   fadeToBlackBy(leds, NUM_LEDS, 1);
-  int test = random8();
-  if (test > 253) {
-    int pos = random16(NUM_LEDS);
-    int colorb = random8();
-    for( int i = max(0, pos-10); i < min(NUM_LEDS, pos+10); i++) {
-      int theta = (pos-i) * 255 / 40;
-      int x = cos8(theta);
-      leds[i] = CHSV( gHue, 200, x);
+  if (random8() < 4) {
+    uint8_t size;
+    if (pos_shift == 0) { size = 20; }
+    else { size = min(pos_shift, 140); }
+    uint8_t pos = random8(NUM_LEDS-1 - size);
+
+    bool overlap = false;
+    for(uint8_t i = pos; i < pos+size; i++) {
+      overlap |= leds[i];
+    }
+
+    if (!overlap) {
+      for(uint8_t i = pos; i < pos+size; i++) {
+        uint8_t theta = (pos+(size/2)-i) * 255 / (2*size);
+        uint8_t val = cos8(theta) - 1;          // library bug? val cannot be 255 below
+        leds[i] = CHSV(hue_shift, 230, val);
+      }
     }
   }
 }
 
+/*
 void confetti()
 {
   // random colored speckles that blink in and fade smoothly
