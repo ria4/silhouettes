@@ -30,11 +30,11 @@ uint8_t fps_idx;
 uint8_t pos_shift = 0;
 uint8_t pos_shifted;
 uint8_t hue_shift = 0;
+uint8_t fade_size = 0;
 
 IRrecv irrecv(IRRCV_PIN);
 decode_results results;
 boolean pause = false;
-boolean mirror = false;
 
 CRGB leds[NUM_LEDS];
 
@@ -44,7 +44,7 @@ CRGB leds[NUM_LEDS];
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 //SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { read_sd, point, line, wave, gradient, splash, strikes };
+SimplePatternList gPatterns = { read_sd, point, line, glitch_carpet, wave, gradient, strikes };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
 uint8_t pattern_idx = 0;
@@ -69,6 +69,10 @@ void fadeall() {
   for(int i = 0; i < NUM_LEDS; i++) {
     leds[i].nscale8(192);
   }
+}
+
+uint8_t val_trapeze(uint8_t min_val, uint8_t pos_shifted, uint8_t i) {
+  return 255 + ((255-min_val)/(2*fade_size)) * (NUM_LEDS-2*fade_size-pos_shifted - abs(i - (fade_size+pos_shifted)) - abs(i - (NUM_LEDS-fade_size)));
 }
 
 
@@ -109,6 +113,13 @@ void flushChannelBuffer() {
   }
   else { if (set_sd_silhouette(pattern_idx_tmp)) { pattern_idx = 0; signal(0); } }
   curr_char_idx = 0;
+}
+
+void flushFadeSizeBuffer() {
+  buffer[curr_char_idx] = 0;
+  fade_size = atoi(buffer);
+  curr_char_idx = 0;
+  FastLED.clear();
 }
 
 void flushPosShiftBuffer() {
@@ -152,6 +163,10 @@ void checkIRSignal()
       case 0xFF629D:
       case 0x511DBB:
         flushChannelBuffer(); break;
+
+      case 0xFF906F:
+      case 0xE5CFBD7F:
+        flushFadeSizeBuffer(); break;
 
       case 0xFF9867:
       case 0x97483BFB:
@@ -208,10 +223,6 @@ void checkIRSignal()
       case 0xFF02FD:
       case 0xD7E84B1B:
         if (fps_idx < FRAMES_PER_SECOND_MODES - 1) { fps_idx += 1; }; break;
-
-      case 0xFF906F:
-      case 0xE5CFBD7F:
-        mirror = !mirror; break;
 
       case 0xFFC23D:
       case 0x20FE4DBB:
@@ -297,12 +308,14 @@ void spark()
 }
 */
 
+/*
 int freeRam()
 {
   extern int __heap_start, *__brkval;
   int v;
   return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
 }
+*/
 
 bool set_sd_silhouette(int n) {
   if (silhouette) { silhouette.close(); }
@@ -345,7 +358,7 @@ void read_sd()
       g = silhouette.read();
       b = silhouette.read();
       pos_shifted = j % NUM_LEDS;
-      if (mirror) { pos_shifted = NUM_LEDS - 1 - pos_shifted; }
+      if (fade_size != 0) { pos_shifted = NUM_LEDS - 1 - pos_shifted; }
       leds[pos_shifted] = CRGB(r, g, b);		// note that CRGB class would first retrieve b, then g, then r
     }
     sd_frame_idx++;
@@ -378,7 +391,9 @@ void point()
 void line()
 {
   pos_shifted = pos_shift % NUM_LEDS;
-  fill_solid(&(leds[pos_shifted]), NUM_LEDS - pos_shifted, CHSV(hue_shift, 255, 255));
+  for(uint8_t i = pos_shift; i < NUM_LEDS-1; i++) {
+    leds[i] = CHSV(hue_shift, 255, val_trapeze(0, pos_shifted, i));
+  }
 }
 
 void wave()
@@ -464,6 +479,15 @@ void addGlitter( fract8 chanceOfGlitter)
 }
 */
 
+void glitch_carpet()
+{
+  pos_shifted = pos_shift % NUM_LEDS;
+  for(uint8_t i = pos_shift; i < NUM_LEDS-1; i++) {
+    leds[i] = CHSV(random8(255), 255, val_trapeze(20, pos_shifted, i));
+  }
+}
+
+/*
 void splash()
 {
   // random colored splashes that fade smoothly
@@ -489,7 +513,6 @@ void splash()
   }
 }
 
-/*
 void confetti()
 {
   // random colored speckles that blink in and fade smoothly
