@@ -37,13 +37,15 @@ boolean pause = false;
 
 CRGB leds[NUM_LEDS];
 
+// to be removed when not using pixelated_drift
+uint8_t leds_hue[NUM_LEDS];
 
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 //SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { read_sd, point, pixelated, line, pulse, gradient, strikes };
+SimplePatternList gPatterns = { read_sd, point, line, pulse, gradient, pixelated, pixelated_hue, pixelated_drift };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
 uint8_t pattern_idx = 0;
@@ -65,7 +67,7 @@ uint8_t r, g, b;
 
 
 void fadeall() {
-  for(int i = 0; i < NUM_LEDS; i++) {
+  for(uint8_t i = 0; i < NUM_LEDS; i++) {
     leds[i].nscale8(192);
   }
 }
@@ -78,6 +80,11 @@ void trapeze_fade() {
   for(uint8_t i = pos_shift; i < NUM_LEDS; i++) {
     leds[i].nscale8(trapeze_val(0, i));
   }
+}
+
+void reset_leds_hue()
+{
+  for (uint8_t i = 0; i < NUM_LEDS; i++) { leds_hue[i] = hue_shift; }
 }
 
 
@@ -137,6 +144,7 @@ void flushPosShiftBuffer() {
 void flushHueShiftBuffer() {
   buffer[curr_char_idx] = 0;
   hue_shift = atoi(buffer);
+  reset_leds_hue();
   curr_char_idx = 0;
   FastLED.clear();
 }
@@ -231,7 +239,7 @@ void checkIRSignal()
 
       case 0xFFC23D:
       case 0x20FE4DBB:
-        FastLED.clear(); FastLED.show(); pause = !pause; break;
+        FastLED.clear(); FastLED.show(); reset_leds_hue(); pause = !pause; break;
 
       default:
         break; //Serial.println(results.value, HEX);
@@ -491,6 +499,26 @@ void pixelated()
 {
   for(uint8_t i = pos_shift; i < NUM_LEDS; i++) {
     leds[i] = CHSV(random8(255), 255, 255);
+  }
+  trapeze_fade();
+}
+
+void pixelated_hue()
+{
+  leds[pos_shift] = CHSV(hue_shift, 255, 255);
+  uint8_t curr_hue = hue_shift;
+  for(uint8_t i = pos_shift+1; i < NUM_LEDS; i++) {
+    curr_hue = curr_hue + 12 - random8(25);
+    leds[i] = CHSV(curr_hue, 255, 255);
+  }
+  trapeze_fade();
+}
+
+void pixelated_drift()
+{
+  for(uint8_t i = pos_shift; i < NUM_LEDS; i++) {
+    leds[i] = CHSV(leds_hue[i], 255, 255);
+    leds_hue[i] += 3 - random8(7);
   }
   trapeze_fade();
 }
