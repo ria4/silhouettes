@@ -45,7 +45,7 @@ uint8_t leds_hue[NUM_LEDS];
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 //SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { read_sd, point, line, pulse, gradient, pixelated, pixelated_hue, pixelated_drift };
+SimplePatternList gPatterns = { read_sd, point, line, desaturate, pulse, gradient, pixelated, pixelated_hue, pixelated_drift };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
 uint8_t pattern_idx = 0;
@@ -412,17 +412,15 @@ void line()
 
 void pulse()
 {
-  uint8_t BeatsPerMinute = fps_arr[fps_idx];
-  uint8_t beat = beatsin8(BeatsPerMinute, 0, 255);
+  uint8_t beat = beatsin8(fps_arr[fps_idx], 0, 255);
   fill_solid(&(leds[pos_shift]), NUM_LEDS-pos_shift, CHSV(hue_shift, 255, beat));
   trapeze_fade();
 }
 
 void gradient()
 {
-  uint8_t BeatsPerMinute = fps_arr[fps_idx];
-  uint8_t beat = beatsin8(BeatsPerMinute, 0, 100);
-  uint8_t beat2 = beatsin8(2*BeatsPerMinute, 0, 100);
+  uint8_t beat = beatsin8(fps_arr[fps_idx], 0, 255);
+  uint8_t beat2 = beatsin8(2*fps_arr[fps_idx], 0, 100);
   fill_gradient(&(leds[pos_shift]), NUM_LEDS-pos_shift, CHSV(hue_shift+beat2, 255, 255), CHSV(hue_shift+beat, 255, 255));
   trapeze_fade();
 }
@@ -495,6 +493,15 @@ void addGlitter( fract8 chanceOfGlitter)
 }
 */
 
+void desaturate()
+{
+  uint8_t beat = beatsin8(fps_arr[fps_idx], 0, 255);
+  for(uint8_t i = pos_shift; i < NUM_LEDS; i++) {
+    leds[i] = CHSV(hue_shift+beat, min(2*i, 255), 255);
+  }
+  trapeze_fade();
+}
+
 void pixelated()
 {
   for(uint8_t i = pos_shift; i < NUM_LEDS; i++) {
@@ -508,7 +515,7 @@ void pixelated_hue()
   leds[pos_shift] = CHSV(hue_shift, 255, 255);
   uint8_t curr_hue = hue_shift;
   for(uint8_t i = pos_shift+1; i < NUM_LEDS; i++) {
-    curr_hue = curr_hue + 12 - random8(25);
+    curr_hue += 12 - random8(25);
     leds[i] = CHSV(curr_hue, 255, 255);
   }
   trapeze_fade();
@@ -518,7 +525,7 @@ void pixelated_drift()
 {
   for(uint8_t i = pos_shift; i < NUM_LEDS; i++) {
     leds[i] = CHSV(leds_hue[i], 255, 255);
-    leds_hue[i] += 3 - random8(7);
+    leds_hue[i] += 12 - random8(25);
   }
   trapeze_fade();
 }
