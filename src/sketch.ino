@@ -37,8 +37,7 @@ boolean pause = false;
 
 CRGB leds[NUM_LEDS];
 
-// to be removed when not using pixelated_drift
-uint8_t leds_hue[NUM_LEDS];
+uint8_t * leds_hue;
 
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 
@@ -84,7 +83,15 @@ void trapeze_fade() {
 
 void reset_leds_hue()
 {
-  for (uint8_t i = 0; i < NUM_LEDS; i++) { leds_hue[i] = hue_shift; }
+  //Serial.print(F("Remaining SRAM: ")); Serial.println(freeRam());
+  if (pattern_idx == channels_nbr-1) {
+    leds_hue = (uint8_t*) malloc(NUM_LEDS);
+    for (uint8_t i = 0; i < NUM_LEDS; i++) { leds_hue[i] = hue_shift; }
+  } else {
+    free(leds_hue);
+    leds_hue = NULL;
+  }
+  //Serial.print(F("Remaining SRAM: ")); Serial.println(freeRam());
 }
 
 
@@ -124,6 +131,7 @@ void flushChannelBuffer() {
     if (pattern_idx == 0) { signal(0); } else { signal(255); }
   }
   else { if (set_sd_silhouette(pattern_idx_tmp)) { pattern_idx = 0; signal(0); } }
+  reset_leds_hue();
   curr_char_idx = 0;
 }
 
@@ -144,7 +152,6 @@ void flushPosShiftBuffer() {
 void flushHueShiftBuffer() {
   buffer[curr_char_idx] = 0;
   hue_shift = atoi(buffer);
-  reset_leds_hue();
   curr_char_idx = 0;
   FastLED.clear();
 }
@@ -239,7 +246,7 @@ void checkIRSignal()
 
       case 0xFFC23D:
       case 0x20FE4DBB:
-        FastLED.clear(); FastLED.show(); reset_leds_hue(); pause = !pause; break;
+        FastLED.clear(); FastLED.show(); pause = !pause; break;
 
       default:
         break; //Serial.println(results.value, HEX);
@@ -281,25 +288,27 @@ void signal(uint8_t rb) {
 
 void prevPattern() {
   if (pattern_idx == 0) {
-    if (set_sd_silhouette(sd_idx - 1)) { signal(0); return; }
+    if (set_sd_silhouette(sd_idx - 1)) { signal(0); reset_leds_hue(); return; }
     else { pattern_idx = channels_nbr - 1; } }
   else {
     if (pattern_idx == 1) {
-      if (set_sd_silhouette(sd_idx)) { pattern_idx = 0; signal(0); return; }
+      if (set_sd_silhouette(sd_idx)) { pattern_idx = 0; signal(0); reset_leds_hue(); return; }
       else { pattern_idx = channels_nbr - 1; } }
     else { pattern_idx--; } }
+  reset_leds_hue();
   signal(255);
 }
 
 void nextPattern() {
   if (pattern_idx == 0) {
-    if (set_sd_silhouette(sd_idx + 1)) { signal(0); return; }
+    if (set_sd_silhouette(sd_idx + 1)) { signal(0); reset_leds_hue(); return; }
     else { pattern_idx = 1; } }
   else {
     if (pattern_idx == channels_nbr - 1) {
-      if (set_sd_silhouette(sd_idx)) { pattern_idx = 0; signal(0); return; }
+      if (set_sd_silhouette(sd_idx)) { pattern_idx = 0; signal(0); reset_leds_hue(); return; }
       else { pattern_idx = 0; } }
     else { pattern_idx++; } }
+  reset_leds_hue();
   signal(255);
 }
 
