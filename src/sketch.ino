@@ -43,8 +43,7 @@ uint8_t * leds_hue;
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
-//SimplePatternList gPatterns = { rainbow, splash, sinelon, bpm, juggle, confetti };
-SimplePatternList gPatterns = { read_sd, point, line, desaturate, pulse, gradient, pixelated, pixelated_hue, pixelated_drift };
+SimplePatternList gPatterns = { read_sd, point, line, pulse, gradient, desaturate, pixelated, pixelated_hue, pixelated_drift };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
 uint8_t pattern_idx = 0;
@@ -72,11 +71,11 @@ void fadeall() {
 }
 
 uint8_t trapeze_val(uint8_t min_val, uint8_t i) {
-  return 255 + ((255-min_val)/(2*fade_size)) * (NUM_LEDS-1-2*fade_size-pos_shift - abs(i - (fade_size+pos_shift)) - abs(i - (NUM_LEDS-1-fade_size)));
+  return 255 + ((255-min_val)/(2*fade_size)) * (NUM_LEDS-1-2*fade_size-pos_shift - abs(i - fade_size) - abs(i - (NUM_LEDS-1-pos_shift - fade_size)));
 }
 
 void trapeze_fade() {
-  for(uint8_t i = pos_shift; i < NUM_LEDS; i++) {
+  for(uint8_t i = 0; i < NUM_LEDS-pos_shift; i++) {
     leds[i].nscale8(trapeze_val(0, i));
   }
 }
@@ -131,7 +130,6 @@ void flushChannelBuffer() {
     if (pattern_idx == 0) { signal(0); } else { signal(255); }
   }
   else { if (set_sd_silhouette(pattern_idx_tmp)) { pattern_idx = 0; signal(0); } }
-  reset_leds_hue();
   curr_char_idx = 0;
 }
 
@@ -174,15 +172,15 @@ void checkIRSignal()
 
       case 0xFFA25D:
       case 0xE318261B:
-        prevPattern(); break;
+        prevPattern(); reset_leds_hue(); break;
 
       case 0xFFE21D:
       case 0xEE886D7F:
-        nextPattern(); break;
+        nextPattern(); reset_leds_hue(); break;
 
       case 0xFF629D:
       case 0x511DBB:
-        flushChannelBuffer(); break;
+        flushChannelBuffer(); reset_leds_hue(); break;
 
       case 0xFF906F:
       case 0xE5CFBD7F:
@@ -261,6 +259,7 @@ void loop()
 {
   if (!pause) {
     gPatterns[pattern_idx]();
+    trapeze_fade();
     EVERY_N_MILLISECONDS( 30 ) { gHue++; } // slowly cycle the "base color" through the rainbow
   }
 
@@ -288,27 +287,25 @@ void signal(uint8_t rb) {
 
 void prevPattern() {
   if (pattern_idx == 0) {
-    if (set_sd_silhouette(sd_idx - 1)) { signal(0); reset_leds_hue(); return; }
+    if (set_sd_silhouette(sd_idx - 1)) { signal(0); return; }
     else { pattern_idx = channels_nbr - 1; } }
   else {
     if (pattern_idx == 1) {
-      if (set_sd_silhouette(sd_idx)) { pattern_idx = 0; signal(0); reset_leds_hue(); return; }
+      if (set_sd_silhouette(sd_idx)) { pattern_idx = 0; signal(0); return; }
       else { pattern_idx = channels_nbr - 1; } }
     else { pattern_idx--; } }
-  reset_leds_hue();
   signal(255);
 }
 
 void nextPattern() {
   if (pattern_idx == 0) {
-    if (set_sd_silhouette(sd_idx + 1)) { signal(0); reset_leds_hue(); return; }
+    if (set_sd_silhouette(sd_idx + 1)) { signal(0); return; }
     else { pattern_idx = 1; } }
   else {
     if (pattern_idx == channels_nbr - 1) {
-      if (set_sd_silhouette(sd_idx)) { pattern_idx = 0; signal(0); reset_leds_hue(); return; }
+      if (set_sd_silhouette(sd_idx)) { pattern_idx = 0; signal(0); return; }
       else { pattern_idx = 0; } }
     else { pattern_idx++; } }
-  reset_leds_hue();
   signal(255);
 }
 
@@ -375,14 +372,14 @@ void read_sd()
   if (silhouette && silhouette.available()) {
     //Serial.print(F("Remaining SRAM: "));
     //Serial.println(freeRam());
-    for (int j=pos_shift; j<sd_width+pos_shift; j++) {
+    for (int j=0; j<sd_width; j++) {
       r = silhouette.read();
       g = silhouette.read();
       b = silhouette.read();
       if (fade_size == 0) {
         leds[j] = CRGB(r, g, b);		// note that CRGB class would first retrieve b, then g, then r
       } else {
-        leds[NUM_LEDS-1 - j] = CRGB(r, g, b);
+        leds[NUM_LEDS-1-pos_shift - j] = CRGB(r, g, b);
       }
     }
     sd_frame_idx++;
@@ -401,39 +398,40 @@ void read_sd()
   }
 }
 
+/*
 void black()
 {
   FastLED.clear();
 }
+*/
 
 void point()
 {
-  leds[pos_shift + 1] = CHSV(hue_shift, 255, 255);
+  leds[pos_shift] = CHSV(hue_shift, 255, 255);
 }
 
 void line()
 {
-  for(uint8_t i = pos_shift; i < NUM_LEDS; i++) {
+  for(uint8_t i = 0; i < NUM_LEDS-pos_shift; i++) {
     leds[i] = CHSV(hue_shift, 255, 255);
   }
-  trapeze_fade();
 }
 
 void pulse()
 {
   uint8_t beat = beatsin8(fps_arr[fps_idx], 0, 255);
-  fill_solid(&(leds[pos_shift]), NUM_LEDS-pos_shift, CHSV(hue_shift, 255, beat));
-  trapeze_fade();
+  fill_solid(leds, NUM_LEDS-pos_shift, CHSV(hue_shift, 255, beat));
+  //fill_solid(&(leds[pos_shift]), NUM_LEDS-pos_shift, CHSV(hue_shift, 255, beat));
 }
 
 void gradient()
 {
   uint8_t beat = beatsin8(fps_arr[fps_idx], 0, 255);
   uint8_t beat2 = beatsin8(2*fps_arr[fps_idx], 0, 100);
-  fill_gradient(&(leds[pos_shift]), NUM_LEDS-pos_shift, CHSV(hue_shift+beat2, 255, 255), CHSV(hue_shift+beat, 255, 255));
-  trapeze_fade();
+  fill_gradient(leds, NUM_LEDS-pos_shift, CHSV(hue_shift+beat2, 255, 255), CHSV(hue_shift+beat, 255, 255));
 }
 
+/*
 void strikes()
 {
   if ( random8() < 20 ) {
@@ -481,7 +479,6 @@ void strikes()
   }
 }
 
-/*
 void rainbow()
 {
   fill_rainbow(leds, NUM_LEDS, gHue, 7);
@@ -504,39 +501,33 @@ void addGlitter( fract8 chanceOfGlitter)
 
 void desaturate()
 {
-  uint8_t beat = beatsin8(fps_arr[fps_idx], 0, 255);
-  for(uint8_t i = pos_shift; i < NUM_LEDS; i++) {
-    leds[i] = CHSV(hue_shift+beat, min(2*i, 255), 255);
-  }
-  trapeze_fade();
+  uint8_t beat = beatsin8(fps_arr[fps_idx], 0, 75);
+  fill_gradient(leds, NUM_LEDS-pos_shift, CHSV(hue_shift+beat, 140, 255), CHSV(hue_shift+beat+10, 10, 255));
 }
 
 void pixelated()
 {
-  for(uint8_t i = pos_shift; i < NUM_LEDS; i++) {
+  for(uint8_t i = 0; i < NUM_LEDS-pos_shift; i++) {
     leds[i] = CHSV(random8(255), 255, 255);
   }
-  trapeze_fade();
 }
 
 void pixelated_hue()
 {
-  leds[pos_shift] = CHSV(hue_shift, 255, 255);
+  leds[0] = CHSV(hue_shift, 255, 255);
   uint8_t curr_hue = hue_shift;
-  for(uint8_t i = pos_shift+1; i < NUM_LEDS; i++) {
-    curr_hue += 12 - random8(25);
+  for(uint8_t i = 1; i < NUM_LEDS-pos_shift; i++) {
+    curr_hue += 9 - random8(19);
     leds[i] = CHSV(curr_hue, 255, 255);
   }
-  trapeze_fade();
 }
 
 void pixelated_drift()
 {
-  for(uint8_t i = pos_shift; i < NUM_LEDS; i++) {
+  for(uint8_t i = 0; i < NUM_LEDS-pos_shift; i++) {
     leds[i] = CHSV(leds_hue[i], 255, 255);
     leds_hue[i] += 12 - random8(25);
   }
-  trapeze_fade();
 }
 
 /*
