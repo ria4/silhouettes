@@ -426,9 +426,8 @@ void pulse()
 
 void gradient()
 {
-  uint8_t beat = beatsin8(fps_arr[fps_idx], 0, 255);
-  uint8_t beat2 = beatsin8(2*fps_arr[fps_idx], 0, 100);
-  fill_gradient(leds, NUM_LEDS-pos_shift, CHSV(hue_shift+beat2, 255, 255), CHSV(hue_shift+beat, 255, 255));
+  uint8_t beat = beatsin8(fps_arr[fps_idx], 0, 100);
+  fill_gradient(leds, NUM_LEDS-pos_shift, CHSV(hue_shift+beat*2, 255, 255), CHSV(hue_shift+beat+50, 255, 255));
 }
 
 /*
@@ -517,7 +516,7 @@ void pixelated_hue()
   leds[0] = CHSV(hue_shift, 255, 255);
   uint8_t curr_hue = hue_shift;
   for(uint8_t i = 1; i < NUM_LEDS-pos_shift; i++) {
-    curr_hue += 9 - random8(19);
+    curr_hue += 7 - random8(15);
     leds[i] = CHSV(curr_hue, 255, 255);
   }
 }
