@@ -43,12 +43,13 @@ uint8_t * leds_hue;
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
-SimplePatternList gPatterns = { read_sd, point, line, pulse, gradient, desaturate, pixelated, pixelated_hue, pixelated_drift };
+SimplePatternList gPatterns = { read_sd, point, line, pulse, gradient, desaturate, noise, pixelated_hue, pixelated_drift };
 uint8_t channels_nbr = ARRAY_SIZE(gPatterns);
 
 uint8_t pattern_idx = 0;
 uint8_t pattern_idx_tmp;
 uint8_t gHue = 0; // rotating "base color" used by many of the patterns
+static uint16_t noise_z;
 
 char buffer[3];
 uint8_t curr_char_idx = 0;
@@ -113,6 +114,8 @@ void setup() {
     return;
   }
   //Serial.println(F("OK!"));
+
+  noise_z = random16();
 }
 
 
@@ -504,11 +507,12 @@ void desaturate()
   fill_gradient(leds, NUM_LEDS-pos_shift, CHSV(hue_shift+beat, 140, 255), CHSV(hue_shift+beat+10, 10, 255));
 }
 
-void pixelated()
+void noise()
 {
   for(uint8_t i = 0; i < NUM_LEDS-pos_shift; i++) {
-    leds[i] = CHSV(random8(255), 255, 255);
+    leds[i] = CHSV(hue_shift + inoise8((1+fade_size)*i, noise_z)/2, 192 + (inoise8((1+fade_size)*i, noise_z) >> 2), 255);
   }
+  noise_z += 15;
 }
 
 void pixelated_hue()
