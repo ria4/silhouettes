@@ -44,6 +44,7 @@ struct Channel {
   { gradient, true, false },
   //{ desaturate, true, false },
   { noise, true, false },
+  { noise_fade_out, true, false },
   { pixelated_hue, false, false },
   { pixelated_drift, false, false },
 };
@@ -116,13 +117,15 @@ void loop()
     trapeze_fade();
 
     if (channels[channel_idx].fade_in) {
+      if (channel_timer < 255) {
+        EVERY_N_MILLISECONDS(20) { channel_timer += 1; }
+      }
       if (channel_timer < 50) {
-        EVERY_N_MILLISECONDS(20) { channel_timer += 1 ; }
         timer_fade_in();
       }
     }
 
-    EVERY_N_MILLISECONDS(10) { gHue += random8(10) ; }
+    EVERY_N_MILLISECONDS(10) { gHue += random8(10); }
   }
 
   while (!irrecv.isIdle());
@@ -423,6 +426,15 @@ void noise()
 {
   for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
     leds[i] = CHSV(hue_shift + inoise8((1+fade_size)*i, noise_z)/2, 192 + (inoise8((1+fade_size)*i, noise_z) >> 2), 255);
+  }
+  noise_z += 15;
+}
+
+void noise_fade_out()
+{
+  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
+    leds[i] = CHSV(hue_shift - 64 + (inoise8((1+fade_size)*i, noise_z*2) >> 2), 255, 64 + (inoise8((1+fade_size)*i, noise_z) >> 2)*3);
+    leds[i].nscale8(255-channel_timer);
   }
   noise_z += 15;
 }
