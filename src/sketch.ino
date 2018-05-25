@@ -31,15 +31,31 @@ FASTLED_USING_NAMESPACE
 CRGB leds[NUM_LEDS];
 byte * leds_hue;
 
-typedef void (*SimplePatternList[])();
-SimplePatternList gPatterns = { cylon, point, line, pulse, gradient, desaturate, noise, pixelated_hue, pixelated_drift };
-const byte channels_nbr = ARRAY_SIZE(gPatterns);
-byte pattern_idx = 0;
-byte pattern_idx_tmp;
+struct Channel {
+  void (*pattern)();
+  boolean fade_in;
+  boolean auto_refresh;
+} channels[] {
+  { point, false, false },
+  { line, true, false },
+  { pulse, false, false },
+  { cylon, true, true },
+  { cylon_rainbow, true, true },
+  { gradient, true, false },
+  //{ desaturate, true, false },
+  { noise, true, false },
+  { pixelated_hue, false, false },
+  { pixelated_drift, false, false },
+};
+
+const byte channels_nbr = ARRAY_SIZE(channels);
+byte channel_idx = 0;
+byte channel_idx_tmp;
+
 boolean pause = false;
+byte channel_timer = 0;
 
 const int fps_arr[FPS_MODES_NBR] = { 3, 12, 50, 200, 1000 };      // the frame rate may cap by itself
-const boolean auto_refresh[channels_nbr] = { true, false, false, false, false, false, false, false, false };
 
 IRrecv irrecv(IRRCV_PIN);
 decode_results results;
@@ -95,9 +111,18 @@ void setup() {
 void loop()
 {
   if (!pause) {
-    gPatterns[pattern_idx]();
+    channels[channel_idx].pattern();
+
     trapeze_fade();
-    EVERY_N_MILLISECONDS(30) { gHue++; }
+
+    if (channels[channel_idx].fade_in) {
+      if (channel_timer < 50) {
+        EVERY_N_MILLISECONDS(20) { channel_timer += 1 ; }
+        timer_fade_in();
+      }
+    }
+
+    EVERY_N_MILLISECONDS(10) { gHue += random8(10) ; }
   }
 
   while (!irrecv.isIdle());
@@ -107,22 +132,13 @@ void loop()
     FastLED.show();
     // long delays with FastLED cause long periods when the IRremote cannot catch interrupts
     //FastLED.delay(1000/fps_arr[fps_idx]);
-    if (auto_refresh[pattern_idx]) {
-      delay(5);
-    } else {
-      delay(1000/fps_arr[fps_idx]);
-    }
+    if (channels[channel_idx].auto_refresh) { delay(5); }
+    else { delay(1000/fps_arr[fps_idx]); }
   }
 }
 
 
 // Helpers
-
-void fadeall() {
-  for(byte i = 0; i < NUM_LEDS; i++) {
-    leds[i].nscale8(192);
-  }
-}
 
 byte trapeze_val(byte min_val, byte i) {
   return 255 + ((255-min_val)/(2*fade_size)) * (NUM_LEDS-1-2*fade_size-pos_shift - abs(i - fade_size) - abs(i - (NUM_LEDS-1-pos_shift - fade_size)));
@@ -134,10 +150,16 @@ void trapeze_fade() {
   }
 }
 
+void timer_fade_in() {
+  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
+    leds[i].nscale8(channel_timer*5);
+  }
+}
+
 void reset_leds_hue()
 {
   //Serial.print(F("Remaining SRAM: ")); Serial.println(freeRam());
-  if (pattern_idx == channels_nbr-1) {
+  if (channel_idx == channels_nbr-1) {
     leds_hue = (byte*) malloc(NUM_LEDS);
     for (byte i = 0; i < NUM_LEDS; i++) { leds_hue[i] = hue_shift; }
   } else {
@@ -167,13 +189,13 @@ void addToBuffer(char c) {
 
 void flushChannelBuffer() {
   ir_buffer[curr_char_idx] = 0;
-  pattern_idx_tmp = atoi(ir_buffer);       // note that no buffer raises a plain 0
-  if (pattern_idx_tmp < channels_nbr) {
-    pattern_idx = pattern_idx_tmp;
+  channel_idx_tmp = atoi(ir_buffer);       // note that no buffer raises a plain 0
+  if (channel_idx_tmp < channels_nbr) {
+    channel_idx = channel_idx_tmp;
     signal(255);
-    //if (pattern_idx == 0) { signal(0); } else { signal(255); }
+    //if (channel_idx == 0) { signal(0); } else { signal(255); }
   }
-  //else { if (set_sd_silhouette(pattern_idx_tmp)) { pattern_idx = 0; signal(0); } }
+  //else { if (set_sd_silhouette(channel_idx_tmp)) { channel_idx = 0; signal(0); } }
   curr_char_idx = 0;
 }
 
@@ -216,11 +238,11 @@ void checkIRSignal()
 
       case 0xFFA25D:
       case 0xE318261B:
-        prevPattern(); reset_leds_hue(); break;
+        prevChannel(); reset_leds_hue(); break;
 
       case 0xFFE21D:
       case 0xEE886D7F:
-        nextPattern(); reset_leds_hue(); break;
+        nextChannel(); reset_leds_hue(); break;
 
       case 0xFF629D:
       case 0x511DBB:
@@ -288,7 +310,7 @@ void checkIRSignal()
 
       case 0xFFC23D:
       case 0x20FE4DBB:
-        FastLED.clear(); FastLED.show(); pause = !pause; break;
+        FastLED.clear(); FastLED.show(); pause = !pause; if (!pause) { channel_timer = 0; } break;
 
       default:
         break; //Serial.println(results.value, HEX);
@@ -302,7 +324,7 @@ void checkIRSignal()
 
 // Channel Switching
 
-// brief signal when a new pattern is loaded: blue for SD, red for programmatic
+// brief signal when a new channel is loaded: blue for SD, red for programmatic
 void signal(byte rb) {
   FastLED.clear();
   leds[0] = CRGB(rb, 0, 255-rb);
@@ -313,49 +335,38 @@ void signal(byte rb) {
   pause = true;
 }
 
-void prevPattern() {
+void prevChannel() {
 /*
-  if (pattern_idx == 0) {
+  if (channel_idx == 0) {
     if (set_sd_silhouette(sd_idx - 1)) { signal(0); return; }
-    else { pattern_idx = channels_nbr - 1; } }
+    else { channel_idx = channels_nbr - 1; } }
   else {
-    if (pattern_idx == 1) {
-      if (set_sd_silhouette(sd_idx)) { pattern_idx = 0; signal(0); return; }
-      else { pattern_idx = channels_nbr - 1; } }
-    else { pattern_idx--; } }
+    if (channel_idx == 1) {
+      if (set_sd_silhouette(sd_idx)) { channel_idx = 0; signal(0); return; }
+      else { channel_idx = channels_nbr - 1; } }
+    else { channel_idx--; } }
 */
-  if (pattern_idx == 0) { pattern_idx = channels_nbr-1; } else { pattern_idx--; }
+  if (channel_idx == 0) { channel_idx = channels_nbr-1; } else { channel_idx--; }
   signal(255);
 }
 
-void nextPattern() {
+void nextChannel() {
 /*
-  if (pattern_idx == 0) {
+  if (channel_idx == 0) {
     if (set_sd_silhouette(sd_idx + 1)) { signal(0); return; }
-    else { pattern_idx = 1; } }
+    else { channel_idx = 1; } }
   else {
-    if (pattern_idx == channels_nbr - 1) {
-      if (set_sd_silhouette(sd_idx)) { pattern_idx = 0; signal(0); return; }
-      else { pattern_idx = 0; } }
-    else { pattern_idx++; } }
+    if (channel_idx == channels_nbr - 1) {
+      if (set_sd_silhouette(sd_idx)) { channel_idx = 0; signal(0); return; }
+      else { channel_idx = 0; } }
+    else { channel_idx++; } }
 */
-  if (pattern_idx == channels_nbr-1) { pattern_idx = 0; } else { pattern_idx++; }
+  if (channel_idx == channels_nbr-1) { channel_idx = 0; } else { channel_idx++; }
   signal(255);
 }
 
 
 // Channels
-
-void cylon() {
-  FastLED.clear();
-  int beat = beatsin16(fps_arr[fps_idx], 0, (NUM_LEDS-1 - pos_shift - 2*fade_size)<<8);
-  byte beat8 = (byte) (beat>>8);
-  for(byte i = beat8+1; i < beat8+2*fade_size; i++) {
-    int angle = ((i<<8) - beat) / (2*fade_size);
-    leds[i] = CHSV(hue_shift, 255, quadwave8((byte) angle));
-  }
-}
-
 
 void point()
 {
@@ -374,6 +385,26 @@ void pulse()
   byte beat = beatsin8(fps_arr[fps_idx], 0, 255);
   fill_solid(leds, NUM_LEDS-pos_shift, CHSV(hue_shift, 255, beat));
   //fill_solid(&(leds[pos_shift]), NUM_LEDS-pos_shift, CHSV(hue_shift, 255, beat));
+}
+
+void cylon() {
+  FastLED.clear();
+  int beat = beatsin16(fps_arr[fps_idx], 0, (NUM_LEDS-1 - pos_shift - 2*fade_size)<<8);
+  byte beat8 = (byte) (beat>>8);
+  for(byte i = beat8+1; i < beat8+2*fade_size; i++) {
+    int angle = ((i<<8) - beat) / (2*fade_size);
+    leds[i] = CHSV(hue_shift, 255, quadwave8((byte) angle));
+  }
+}
+
+void cylon_rainbow() {
+  FastLED.clear();
+  int beat = beatsin16(fps_arr[fps_idx], 0, (NUM_LEDS-1 - pos_shift - 2*fade_size)<<8);
+  byte beat8 = (byte) (beat>>8);
+  for(byte i = beat8+1; i < beat8+2*fade_size; i++) {
+    int angle = ((i<<8) - beat) / (2*fade_size);
+    leds[i] = CHSV(gHue+(i-beat8-fade_size)*3, 255, quadwave8((byte) angle));
+  }
 }
 
 void gradient()
@@ -581,7 +612,7 @@ bool set_sd_silhouette(byte n) {
 void read_sd()
 {
   if ((sd_idx == 0) || (!silhouette && !set_sd_silhouette(sd_idx))) {
-    pattern_idx = 1;
+    channel_idx = 1;
     return;
   }
 
