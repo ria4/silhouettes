@@ -37,18 +37,18 @@ struct Channel {
   bool fade_in;
   bool auto_refresh;
 } channels[] {
+  { quarks_collide, false, true },
   { point, false, false },
   { line, true, false },
   { pulse, false, false },
   { gradient, true, false },
-  //{ desaturate, true, false },
   { cylon, true, true },
   { cylon_rainbow, true, true },
-  { pixelated_hue, false, false },
-  { pixelated_drift, false, false },
+  //{ pixelated_hue, false, false },
+  //{ pixelated_drift, false, false },
   { noise, true, false },
   { noise_fade_out, true, false },
-  { disintegrate, false, false },
+  //{ disintegrate, false, false },
   { invade, false, false },
   { split, false, false },
 };
@@ -79,6 +79,19 @@ byte gHue = 0;
 byte split_start;
 byte split_size;
 byte split_hue_top;
+
+const byte NUM_QUARKS = 15;
+struct quark {
+  int pos; byte pos8;
+  int a; int b;
+  byte h; byte s;
+  bool move_away = false;
+};
+typedef struct quark Quark;
+Quark quarks[NUM_QUARKS];
+Quark qk;
+
+unsigned long start_millis;
 
 /*
 File silhouette;
@@ -400,6 +413,49 @@ void point() {
   leds[pos_shift] = CHSV(hue_shift, 255, 255);
 }
 
+void quarks_collide() {
+  if (channel_timer == 0) {
+    start_millis = millis();
+    for (byte i=0; i<NUM_QUARKS; i++) {
+      qk.a = 25 - random8(50);
+      qk.b = random8(20, NUM_LEDS-pos_shift-20) << 8;
+      qk.pos = qk.b;
+      qk.pos8 = (byte) (qk.pos>>8);
+      qk.h = random8();
+      qk.s = random8(180, 255);
+      quarks[i] = qk;
+    }
+  }
+
+  FastLED.clear();
+  for (byte i=0; i<NUM_QUARKS; i++) {
+    if (!quarks[i].move_away) {
+      if (quarks[i].pos8 == 0) {
+        quarks[i].a = random8(10, 40);
+        quarks[i].b = quarks[i].pos - (millis() - start_millis) * quarks[i].a/4;
+        quarks[i].move_away = true;
+      } else if (quarks[i].pos8 == NUM_LEDS-pos_shift-5) {
+        quarks[i].a = -random8(10, 40);
+        quarks[i].b = quarks[i].pos - (millis() - start_millis) * quarks[i].a/4;
+        quarks[i].move_away = true;
+      } else if (random8() > 252) {
+        if (quarks[i].a > 0) { quarks[i].a = -random8(4, 25); } else { quarks[i].a = random8(4, 25); }
+        quarks[i].b = quarks[i].pos - (millis() - start_millis) * quarks[i].a/4;
+      }
+    }
+
+    if ((quarks[i].pos8 > 20) && (quarks[i].pos8 < NUM_LEDS-pos_shift-5-20)) { quarks[i].move_away = false; }
+
+    quarks[i].pos = (millis() - start_millis) * quarks[i].a/4 + quarks[i].b;
+    quarks[i].pos8 = (byte) (quarks[i].pos>>8);
+    for(byte j = quarks[i].pos8; j < quarks[i].pos8+5; j++) {
+      int angle = ((j<<8) - quarks[i].pos) / 5;
+      leds[j] |= CHSV(quarks[i].h, quarks[i].s, quadwave8((byte) angle));
+      // change color if collision
+    }
+  }
+}
+
 void line() {
   for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
     leds[i] = CHSV(hue_shift, 255, 255);
@@ -415,11 +471,6 @@ void pulse() {
 void gradient() {
   byte beat = beatsin8(fps_arr[fps_idx], 0, 100);
   fill_gradient(leds, NUM_LEDS-pos_shift, CHSV(hue_shift+beat*2, 255, 255), CHSV(hue_shift+beat+50, 255, 255));
-}
-
-void desaturate() {
-  byte beat = beatsin8(fps_arr[fps_idx], 0, 75);
-  fill_gradient(leds, NUM_LEDS-pos_shift, CHSV(hue_shift+beat, 140, 255), CHSV(hue_shift+beat+10, 10, 255));
 }
 
 void cylon() {
