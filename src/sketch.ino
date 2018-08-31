@@ -38,6 +38,8 @@ struct Channel {
   bool auto_refresh;
 } channels[] {
   { quarks_collide, false, true },
+  { quarks_collide, false, true },
+  { quarks_collide, false, true },
   { point, false, false },
   { line, true, false },
   { pulse, false, false },
@@ -80,15 +82,18 @@ byte split_start;
 byte split_size;
 byte split_hue_top;
 
-const byte NUM_QUARKS = 15;
+const byte QUARKS_MAX = 64;
+const byte QUARK_DEF_SIZE = 6;
 struct quark {
   int pos; byte pos8;
   int a; int b;
+  byte size;
   byte h; byte s;
   bool move_away = false;
 };
 typedef struct quark Quark;
-Quark quarks[NUM_QUARKS];
+Quark quarks[QUARKS_MAX];
+byte quarks_n;
 Quark qk;
 
 unsigned long start_millis;
@@ -416,42 +421,58 @@ void point() {
 void quarks_collide() {
   if (channel_timer == 0) {
     start_millis = millis();
-    for (byte i=0; i<NUM_QUARKS; i++) {
-      qk.a = 25 - random8(50);
-      qk.b = random8(20, NUM_LEDS-pos_shift-20) << 8;
+    quarks_n = QUARKS_MAX >> (2*(2-(fade_size % 3)));
+    for (byte i=0; i<quarks_n; i++) {
+      qk.a = fps_arr[fps_idx]/2 - random8(fps_arr[fps_idx]);
+      qk.b = random8(qk.size+2, NUM_LEDS-pos_shift-qk.size-2) << 8;
+      if (pos_shift % 2 < 1) { qk.size = QUARK_DEF_SIZE; } else { qk.size = random8(4, QUARK_DEF_SIZE*2); }
       qk.pos = qk.b;
       qk.pos8 = (byte) (qk.pos>>8);
-      qk.h = random8();
-      qk.s = random8(180, 255);
+      if (pos_shift % 3 == 0) { qk.h = hue_shift; }
+      else if (pos_shift % 3 == 1) { qk.h = hue_shift + 40 - random8(80); }
+      else { qk.h = random8(); }
+      if (pos_shift % 4 < 2) { qk.s = 255; } else { qk.s = random8(110, 255); };
       quarks[i] = qk;
     }
   }
 
   FastLED.clear();
-  for (byte i=0; i<NUM_QUARKS; i++) {
+  for (byte i=0; i<quarks_n; i++) {
     if (!quarks[i].move_away) {
-      if (quarks[i].pos8 == 0) {
-        quarks[i].a = random8(10, 40);
+      if (quarks[i].pos8 <= fps_arr[fps_idx]/50) {
+        quarks[i].a = random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
         quarks[i].b = quarks[i].pos - (millis() - start_millis) * quarks[i].a/4;
         quarks[i].move_away = true;
-      } else if (quarks[i].pos8 == NUM_LEDS-pos_shift-5) {
-        quarks[i].a = -random8(10, 40);
+      } else if (quarks[i].pos8 >= NUM_LEDS-pos_shift-quarks[i].size-fps_arr[fps_idx]/50) {
+        quarks[i].a = -random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
         quarks[i].b = quarks[i].pos - (millis() - start_millis) * quarks[i].a/4;
         quarks[i].move_away = true;
-      } else if (random8() > 252) {
-        if (quarks[i].a > 0) { quarks[i].a = -random8(4, 25); } else { quarks[i].a = random8(4, 25); }
+      } else if (random8() > 252 - (fps_arr[fps_idx]>>5)) {
+        if (quarks[i].a > 0) { quarks[i].a = -random8(4, fps_arr[fps_idx]/2); } else { quarks[i].a = random8(4, fps_arr[fps_idx]/2); }
         quarks[i].b = quarks[i].pos - (millis() - start_millis) * quarks[i].a/4;
       }
     }
 
-    if ((quarks[i].pos8 > 20) && (quarks[i].pos8 < NUM_LEDS-pos_shift-5-20)) { quarks[i].move_away = false; }
+    if ((quarks[i].pos8 > 20) && (quarks[i].pos8 < NUM_LEDS-pos_shift-quarks[i].size-20)) { quarks[i].move_away = false; }
 
     quarks[i].pos = (millis() - start_millis) * quarks[i].a/4 + quarks[i].b;
     quarks[i].pos8 = (byte) (quarks[i].pos>>8);
-    for(byte j = quarks[i].pos8; j < quarks[i].pos8+5; j++) {
-      int angle = ((j<<8) - quarks[i].pos) / 5;
+    for(byte j = quarks[i].pos8; j < quarks[i].pos8+quarks[i].size; j++) {
+      if (leds[j]) {
+        if (channel_idx % 3 == 1) {
+          leds[j] = 0;
+          continue;
+        }
+        if (channel_idx % 3 == 2) {
+          if (pos_shift % 3 == 1) {
+            quarks[i].h = hue_shift + 40 - random8(80);
+          } else if (pos_shift % 3 == 2) {
+            quarks[i].h = random8();
+          }
+        }
+      }
+      int angle = ((j<<8) - quarks[i].pos) / quarks[i].size;
       leds[j] |= CHSV(quarks[i].h, quarks[i].s, quadwave8((byte) angle));
-      // change color if collision
     }
   }
 }
