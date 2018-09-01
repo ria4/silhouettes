@@ -37,6 +37,9 @@ struct Channel {
   bool fade_in;
   bool auto_refresh;
 } channels[] {
+  { holes, false, false },
+  { holes, false, false },
+  { holes, false, false },
   { quarks_deco, false, true },
   { quarks_deco, false, true },
   { quarks_deco, false, true },
@@ -52,7 +55,7 @@ struct Channel {
   //{ pixelated_hue, false, false },
   //{ pixelated_drift, false, false },
   { noise, true, false },
-  { noise_fade_out, true, false },
+  //{ noise_fade_out, true, false },
   //{ disintegrate, false, false },
   { invade, false, false },
   { split, false, false },
@@ -107,8 +110,12 @@ typedef struct QuarkDeco {
 };
 QuarkDeco qkd;
 
+bool hole[20];
+byte hole_n;
+byte hole_size;
+
 unsigned long start_millis;
-unsigned long qkd_last_change;
+unsigned long last_change;
 
 /*
 File silhouette;
@@ -153,7 +160,9 @@ void loop()
   if (!pause) {
     channels[channel_idx].pattern();
 
-    trapeze_fade();
+    if (channels[channel_idx].pattern != holes) {
+      trapeze_fade();
+    }
 
     if (channel_timer < 255) {
       EVERY_N_MILLISECONDS(20) { channel_timer += 1; }
@@ -494,6 +503,7 @@ void quarks_collide() {
 
 
 void qkd_change() {
+  last_change = millis();
   byte change = random8(qkd.n + qkd.n-1);
   if (change < qkd.n ) {
     if (qkd.line[change] && (random8() < 64)) {
@@ -557,7 +567,7 @@ void quarks_deco() {
     if (qkd.qk.pos8 <= fps_arr[fps_idx]/50) {
       if (channel_idx % 3 == 2) {
         qkd.qk.a = fps_arr[fps_idx]/2;
-        if (random8() > 64) { qkd_last_change = millis(); qkd_change(); }
+        if (random8() > 64) { qkd_change(); }
       } else {
         qkd.qk.a = random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
       }
@@ -566,23 +576,22 @@ void quarks_deco() {
     } else if (qkd.qk.pos8 >= NUM_LEDS-pos_shift-qkd.size-fps_arr[fps_idx]/50) {
       if (channel_idx % 3 == 2) {
         qkd.qk.a = -fps_arr[fps_idx]/2;
-        if (random8() > 64) { qkd_last_change = millis(); qkd_change(); }
+        if (random8() > 64) { qkd_change(); }
       } else {
         qkd.qk.a = -random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
       }
       qkd.qk.b = qkd.qk.pos - (millis() - start_millis) * qkd.qk.a/4;
       qkd.qk.move_away = true;
-    } else if ((millis() - qkd_last_change > (10000/fps_arr[fps_idx])) && (random8() > 252 - (fps_arr[fps_idx]>>4))) {
+    } else if ((millis() - last_change > (10000/fps_arr[fps_idx])) && (random8() > 252 - (fps_arr[fps_idx]>>4))) {
       if (channel_idx % 3 != 2) {
         if (qkd.qk.a > 0) { qkd.qk.a = -random8(4, fps_arr[fps_idx]/2); } else { qkd.qk.a = random8(4, fps_arr[fps_idx]/2); }
         qkd.qk.b = qkd.qk.pos - (millis() - start_millis) * qkd.qk.a/4;
       }
-      if (random8() > 64) { qkd_last_change = millis(); qkd_change(); }
+      if (random8() > 64) { qkd_change(); }
     }
   }
 
-  if ((millis() - qkd_last_change > (20000/fps_arr[fps_idx])) && (random8() > 253 - (fps_arr[fps_idx]>>5))) {
-    qkd_last_change = millis();
+  if ((millis() - last_change > (20000/fps_arr[fps_idx])) && (random8() > 253 - (fps_arr[fps_idx]>>5))) {
     qkd_change();
   }
 
@@ -607,6 +616,39 @@ void quarks_deco() {
     }
   }
   noise_z += 5;
+}
+
+
+void holes_change() {
+  last_change = millis();
+  for (byte i = 0; i < hole_n; i++) { if (random8(2) < 1) { hole[i] = true; } else { hole[i] = false; } }
+}
+
+void holes() {
+  if (channel_timer == 0) {
+    start_millis = millis();
+    if (channel_idx % 3 == 0) { hole_n = 20; hole_size = 6; }
+    else if (channel_idx % 3 == 1) { hole_n = 14; hole_size = 9; }
+    else { hole_n = 10; hole_size = 13; }
+    holes_change();
+  }
+
+  FastLED.clear();
+
+  if (millis() - last_change > 50000/fps_arr[fps_idx]) { holes_change(); }
+
+  byte start = 0;
+  for(byte i = 0; i < hole_n; i++) {
+    set_raw_noise(start);
+    if (!hole[i]) {
+      for(byte j = start+1; j < start+1+hole_size; j++) {
+        set_raw_noise(j);
+      }
+    }
+    start += hole_size + 1;
+  }
+  set_raw_noise(hole_n*(hole_size+1));
+  noise_z += 15;
 }
 
 
@@ -663,9 +705,13 @@ void pixelated_drift() {
   }
 }
 
+void set_raw_noise(byte i) {
+  leds[i] = CHSV(hue_shift + inoise8((1+fade_size)*i, noise_z)/2, 192 + (inoise8((1+fade_size)*i, noise_z) >> 2), 255);
+}
+
 void noise() {
   for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-    leds[i] = CHSV(hue_shift + inoise8((1+fade_size)*i, noise_z)/2, 192 + (inoise8((1+fade_size)*i, noise_z) >> 2), 255);
+    set_raw_noise(i);
   }
   noise_z += 15;
 }
