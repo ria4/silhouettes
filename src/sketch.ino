@@ -39,6 +39,7 @@ struct Channel {
 } channels[] {
   { quarks_deco, false, true },
   { quarks_deco, false, true },
+  { quarks_deco, false, true },
   { quarks_collide, false, true },
   { quarks_collide, false, true },
   { quarks_collide, false, true },
@@ -429,6 +430,7 @@ void point() {
   leds[pos_shift] = CHSV(hue_shift, 255, 255);
 }
 
+
 void quarks_collide() {
   if (channel_timer == 0) {
     start_millis = millis();
@@ -449,6 +451,7 @@ void quarks_collide() {
   }
 
   FastLED.clear();
+
   for (byte i=0; i<quarks_n; i++) {
     if (!quarks[i].move_away) {
       if (quarks[i].pos8 <= fps_arr[fps_idx]/50) {
@@ -489,6 +492,7 @@ void quarks_collide() {
   }
 }
 
+
 void qkd_change() {
   byte change = random8(qkd.n + qkd.n-1);
   if (change < qkd.n ) {
@@ -514,12 +518,24 @@ void qkd_change() {
   }
 }
 
+void qkd_set_color(byte j, byte c, byte v) {
+  byte hue; byte coeff;
+  if (fade_size % 2 == 0) { coeff = j; } else { coeff = c; }
+  hue = inoise8((1+fade_size)*coeff, noise_z);
+  if (fade_size % 4 < 2) { hue = hue_shift + hue/2; }
+  leds[c] |= CHSV(hue, 192 + (inoise8((1+fade_size)*j, noise_z) >> 2), 255-v);
+}
+
 void quarks_deco() {
   if (channel_timer == 0) {
     start_millis = millis();
     qkd.qk.size = 3;
-    qkd.qk.a = fps_arr[fps_idx]/2 - random8(fps_arr[fps_idx]);
-    qkd.qk.b = NUM_LEDS-pos_shift << 7;
+    if (channel_idx % 3 == 2) {
+      qkd.qk.a = fps_arr[fps_idx]/2;
+    } else {
+      qkd.qk.a = fps_arr[fps_idx]/2 - random8(fps_arr[fps_idx]);
+    }
+    qkd.qk.b = 10<<8;
     qkd.qk.pos = qkd.qk.b;
     qkd.qk.pos8 = (byte) (qkd.qk.pos>>8);
     qkd.qk.h = hue_shift;
@@ -531,35 +547,37 @@ void quarks_deco() {
     for(byte i = 0; i < qkd.n - 1; i++) {
       qkd.gap_size[i] = random8(qkd.qk.size, qkd.qk.size*3); }
     qkd.size = qkd.qk.size; for(byte i = 0; i < qkd.n - 1; i++) { qkd.size += qkd.gap_size[i]; }
+    if (channel_idx % 3 == 1) { delay(1000); }
   }
 
   FastLED.clear();
+  if ((channel_idx % 3 == 1) && (millis() - start_millis > 11000)) { return; }
+
   if (!qkd.qk.move_away) {
     if (qkd.qk.pos8 <= fps_arr[fps_idx]/50) {
-      if (channel_idx % 2 == 0) {
-        qkd.qk.a = random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
-      } else {
+      if (channel_idx % 3 == 2) {
         qkd.qk.a = fps_arr[fps_idx]/2;
+        if (random8() > 64) { qkd_last_change = millis(); qkd_change(); }
+      } else {
+        qkd.qk.a = random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
       }
       qkd.qk.b = qkd.qk.pos - (millis() - start_millis) * qkd.qk.a/4;
       qkd.qk.move_away = true;
     } else if (qkd.qk.pos8 >= NUM_LEDS-pos_shift-qkd.size-fps_arr[fps_idx]/50) {
-      if (channel_idx % 2 == 0) {
-        qkd.qk.a = -random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
-      } else {
+      if (channel_idx % 3 == 2) {
         qkd.qk.a = -fps_arr[fps_idx]/2;
+        if (random8() > 64) { qkd_last_change = millis(); qkd_change(); }
+      } else {
+        qkd.qk.a = -random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
       }
       qkd.qk.b = qkd.qk.pos - (millis() - start_millis) * qkd.qk.a/4;
       qkd.qk.move_away = true;
     } else if ((millis() - qkd_last_change > (10000/fps_arr[fps_idx])) && (random8() > 252 - (fps_arr[fps_idx]>>4))) {
-      if (channel_idx % 2 == 0) {
+      if (channel_idx % 3 != 2) {
         if (qkd.qk.a > 0) { qkd.qk.a = -random8(4, fps_arr[fps_idx]/2); } else { qkd.qk.a = random8(4, fps_arr[fps_idx]/2); }
         qkd.qk.b = qkd.qk.pos - (millis() - start_millis) * qkd.qk.a/4;
       }
-      if (random8() > 64) {
-        qkd_last_change = millis();
-        qkd_change();
-      }
+      if (random8() > 64) { qkd_last_change = millis(); qkd_change(); }
     }
   }
 
@@ -576,13 +594,13 @@ void quarks_deco() {
   for(byte i = 0; i < qkd.n; i++) {
     if (qkd.line[i]) {
       for(byte j = 0; j < 3; j++) {
-        leds[pos8+j] |= CHSV(hue_shift + inoise8((1+fade_size)*j, noise_z)/2, 192 + (inoise8((1+fade_size)*j, noise_z) >> 2), 255-abs(1-j)*120);
+        qkd_set_color(j, pos8+j, abs(1-j)*120);
       }
     }
     if (i != qkd.n - 1) {
       if (qkd.line[i] && qkd.line[i+1] && qkd.gap[i]) {
         for(byte j = 0; j < qkd.gap_size[i]; j++) {
-          leds[pos8+1+j] |= CHSV(hue_shift + inoise8((1+fade_size)*j, noise_z)/2, 192 + (inoise8((1+fade_size)*j, noise_z) >> 2), 255);
+          qkd_set_color(j, pos8+1+j, 0);
         }
       }
       pos8 += qkd.gap_size[i];
@@ -590,6 +608,7 @@ void quarks_deco() {
   }
   noise_z += 5;
 }
+
 
 void line() {
   for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
