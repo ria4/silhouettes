@@ -39,13 +39,9 @@ struct Channel {
 } channels[] {
   { holes, false, false },
   { holes, false, false },
-  { holes, false, false },
-  { quarks_deco, false, true },
-  { quarks_deco, false, true },
-  { quarks_deco, false, true },
   { quarks_collide, false, true },
   { quarks_collide, false, true },
-  { quarks_collide, false, true },
+  { quarks_deco, false, true },
   { point, false, false },
   { line, true, false },
   { pulse, false, false },
@@ -89,7 +85,7 @@ byte split_size;
 byte split_hue_top;
 
 const byte QUARKS_MAX = 64;
-const byte QUARK_DEF_SIZE = 6;
+const byte QUARK_DEF_SIZE = 3;
 typedef struct Quark {
   int pos; byte pos8;
   int a; int b;
@@ -102,10 +98,10 @@ byte quarks_n;
 
 typedef struct QuarkDeco {
   Quark qk;
-  byte n = 4;
-  bool line[4];         // n
-  bool gap[3];          // n-1
-  byte gap_size[3];     // n-1
+  byte n = 8;
+  bool line[8];         // n
+  bool gap[7];          // n-1
+  byte gap_size[7];     // n-1
   byte size;
 };
 QuarkDeco qkd;
@@ -113,9 +109,12 @@ QuarkDeco qkd;
 bool hole[20];
 byte hole_n;
 byte hole_size;
+byte holes_hue_shift;
 
 unsigned long start_millis;
 unsigned long last_change;
+
+void set_raw_noise(byte i, byte hue_shift2=0);
 
 /*
 File silhouette;
@@ -448,13 +447,12 @@ void quarks_collide() {
       Quark qk;
       qk.a = fps_arr[fps_idx]/2 - random8(fps_arr[fps_idx]);
       qk.b = random8(qk.size+2, NUM_LEDS-pos_shift-qk.size-2) << 8;
-      if (pos_shift % 2 < 1) { qk.size = QUARK_DEF_SIZE; } else { qk.size = random8(4, QUARK_DEF_SIZE*2); }
+      qk.size = QUARK_DEF_SIZE*2;
       qk.pos = qk.b;
       qk.pos8 = (byte) (qk.pos>>8);
-      if (pos_shift % 3 == 0) { qk.h = hue_shift; }
-      else if (pos_shift % 3 == 1) { qk.h = hue_shift + 40 - random8(80); }
-      else { qk.h = random8(); }
-      if (pos_shift % 4 < 2) { qk.s = 255; } else { qk.s = random8(110, 255); };
+      if (pos_shift % 2 == 0) { qk.h = hue_shift; }
+      else { qk.h = hue_shift + 40 - random8(80); }
+      qk.s = 255;
       quarks[i] = qk;
     }
   }
@@ -477,22 +475,15 @@ void quarks_collide() {
       }
     }
 
-    if ((quarks[i].pos8 > 20) && (quarks[i].pos8 < NUM_LEDS-pos_shift-quarks[i].size-20)) { quarks[i].move_away = false; }
+    if ((quarks[i].pos8 > 10) && (quarks[i].pos8 < NUM_LEDS-pos_shift-quarks[i].size-10)) { quarks[i].move_away = false; }
 
     quarks[i].pos = (millis() - start_millis) * quarks[i].a/4 + quarks[i].b;
     quarks[i].pos8 = (byte) (quarks[i].pos>>8);
     for(byte j = quarks[i].pos8; j < quarks[i].pos8+quarks[i].size; j++) {
       if (leds[j]) {
-        if (channel_idx % 3 == 1) {
+        if (channel_idx % 2 == 1) {
           leds[j] = 0;
           continue;
-        }
-        if (channel_idx % 3 == 2) {
-          if (pos_shift % 3 == 1) {
-            quarks[i].h = hue_shift + 40 - random8(80);
-          } else if (pos_shift % 3 == 2) {
-            quarks[i].h = random8();
-          }
         }
       }
       int angle = ((j<<8) - quarks[i].pos) / quarks[i].size;
@@ -539,13 +530,9 @@ void qkd_set_color(byte j, byte c, byte v) {
 void quarks_deco() {
   if (channel_timer == 0) {
     start_millis = millis();
-    qkd.qk.size = 3;
-    if (channel_idx % 3 == 2) {
-      qkd.qk.a = fps_arr[fps_idx]/2;
-    } else {
-      qkd.qk.a = fps_arr[fps_idx]/2 - random8(fps_arr[fps_idx]);
-    }
-    qkd.qk.b = 10<<8;
+    qkd.qk.size = QUARK_DEF_SIZE;
+    qkd.qk.a = fps_arr[fps_idx]/2 - random8(fps_arr[fps_idx]);
+    qkd.qk.b = 20<<8;
     qkd.qk.pos = qkd.qk.b;
     qkd.qk.pos8 = (byte) (qkd.qk.pos>>8);
     qkd.qk.h = hue_shift;
@@ -555,39 +542,21 @@ void quarks_deco() {
     for(byte i = 0; i < qkd.n - 1; i++) {
       if (qkd.line[i] && qkd.line[i+1] && (random8(2) < 1)) { qkd.gap[i] = true; } else { qkd.gap[i] = false; } }
     for(byte i = 0; i < qkd.n - 1; i++) {
-      qkd.gap_size[i] = random8(qkd.qk.size, qkd.qk.size*3); }
+      qkd.gap_size[i] = QUARK_DEF_SIZE*4; }
     qkd.size = qkd.qk.size; for(byte i = 0; i < qkd.n - 1; i++) { qkd.size += qkd.gap_size[i]; }
-    if (channel_idx % 3 == 1) { delay(1000); }
   }
 
   FastLED.clear();
-  if ((channel_idx % 3 == 1) && (millis() - start_millis > 11000)) { return; }
 
   if (!qkd.qk.move_away) {
     if (qkd.qk.pos8 <= fps_arr[fps_idx]/50) {
-      if (channel_idx % 3 == 2) {
-        qkd.qk.a = fps_arr[fps_idx]/2;
-        if (random8() > 64) { qkd_change(); }
-      } else {
-        qkd.qk.a = random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
-      }
+      qkd.qk.a = random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
       qkd.qk.b = qkd.qk.pos - (millis() - start_millis) * qkd.qk.a/4;
       qkd.qk.move_away = true;
     } else if (qkd.qk.pos8 >= NUM_LEDS-pos_shift-qkd.size-fps_arr[fps_idx]/50) {
-      if (channel_idx % 3 == 2) {
-        qkd.qk.a = -fps_arr[fps_idx]/2;
-        if (random8() > 64) { qkd_change(); }
-      } else {
-        qkd.qk.a = -random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
-      }
+      qkd.qk.a = -random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
       qkd.qk.b = qkd.qk.pos - (millis() - start_millis) * qkd.qk.a/4;
       qkd.qk.move_away = true;
-    } else if ((millis() - last_change > (10000/fps_arr[fps_idx])) && (random8() > 252 - (fps_arr[fps_idx]>>4))) {
-      if (channel_idx % 3 != 2) {
-        if (qkd.qk.a > 0) { qkd.qk.a = -random8(4, fps_arr[fps_idx]/2); } else { qkd.qk.a = random8(4, fps_arr[fps_idx]/2); }
-        qkd.qk.b = qkd.qk.pos - (millis() - start_millis) * qkd.qk.a/4;
-      }
-      if (random8() > 64) { qkd_change(); }
     }
   }
 
@@ -627,19 +596,32 @@ void holes_change() {
 void holes() {
   if (channel_timer == 0) {
     start_millis = millis();
-    if (channel_idx % 3 == 0) { hole_n = 20; hole_size = 6; }
-    else if (channel_idx % 3 == 1) { hole_n = 14; hole_size = 9; }
+    if (fade_size % 3 == 0) { hole_n = 20; hole_size = 6; }
+    else if (fade_size % 3 == 1) { hole_n = 14; hole_size = 9; }
     else { hole_n = 10; hole_size = 13; }
+    if (channel_idx % 2 == 0) { holes_hue_shift = 0; }
+    else { holes_hue_shift = 128; }
     holes_change();
   }
 
   FastLED.clear();
 
-  if (millis() - last_change > 50000/fps_arr[fps_idx]) { holes_change(); }
+  if (millis() - last_change > 50000/fps_arr[fps_idx]) {
+    holes_change();
+
+    if (channel_idx % 2 == 1) {
+      for(byte i = 0; i < hole_n*(hole_size+1)+1; i++) {
+        set_raw_noise(i, holes_hue_shift);
+      }
+      FastLED.show();
+      delay(5000/fps_arr[fps_idx]);
+      return;
+    }
+  }
 
   byte start = 0;
   for(byte i = 0; i < hole_n; i++) {
-    set_raw_noise(start);
+    set_raw_noise(start, holes_hue_shift);
     if (!hole[i]) {
       for(byte j = start+1; j < start+1+hole_size; j++) {
         set_raw_noise(j);
@@ -647,7 +629,7 @@ void holes() {
     }
     start += hole_size + 1;
   }
-  set_raw_noise(hole_n*(hole_size+1));
+  set_raw_noise(hole_n*(hole_size+1), holes_hue_shift);
   noise_z += 15;
 }
 
@@ -705,8 +687,8 @@ void pixelated_drift() {
   }
 }
 
-void set_raw_noise(byte i) {
-  leds[i] = CHSV(hue_shift + inoise8((1+fade_size)*i, noise_z)/2, 192 + (inoise8((1+fade_size)*i, noise_z) >> 2), 255);
+void set_raw_noise(byte i, byte hue_shift2) {
+  leds[i] = CHSV(hue_shift + hue_shift2 + inoise8((1+fade_size)*i, noise_z)/2, 192 + (inoise8((1+fade_size)*i, noise_z) >> 2), 255);
 }
 
 void noise() {
