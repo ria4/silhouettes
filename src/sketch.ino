@@ -30,20 +30,20 @@ FASTLED_USING_NAMESPACE
 
 CRGB leds[NUM_LEDS];
 byte leds_hue[NUM_LEDS];
-//byte * leds_hue;
 
 struct Channel {
   void (*pattern)();
   bool fade_in;
   bool auto_refresh;
 } channels[] {
+  { point, false, false },
+  { line, true, false },
   { holes, false, false },
   { holes, false, false },
   { quarks_collide, false, true },
   { quarks_collide, false, true },
   { quarks_deco, false, true },
-  { point, false, false },
-  { line, true, false },
+  { sand, false, false },
   { pulse, false, false },
   { gradient, true, false },
   { cylon, true, true },
@@ -54,7 +54,7 @@ struct Channel {
   //{ noise_fade_out, true, false },
   //{ disintegrate, false, false },
   { invade, false, false },
-  { split, false, false },
+  //{ split, false, false },
 };
 
 const byte channels_nbr = ARRAY_SIZE(channels);
@@ -110,6 +110,8 @@ bool hole[20];
 byte hole_n;
 byte hole_size;
 byte holes_hue_shift;
+
+bool sand_burnt[NUM_LEDS];
 
 unsigned long start_millis;
 unsigned long last_change;
@@ -435,7 +437,38 @@ void nextChannel() {
 // Channels
 
 void point() {
-  leds[pos_shift] = CHSV(hue_shift, 255, 255);
+  leds[pos_shift].setHue(hue_shift);
+}
+
+
+void sand() {
+  if (channel_timer == 0) {
+    for (byte i=0; i<NUM_LEDS-pos_shift; i++) { sand_burnt[i] = false; }
+    fill_solid(leds, NUM_LEDS-pos_shift, CHSV(hue_shift, 255, 255));
+  }
+
+  byte i = 0;
+  while ((i < NUM_LEDS-pos_shift) && sand_burnt[i] && (leds_hue[i] == hue_shift)) { i+=1; }
+
+  if (i == NUM_LEDS-pos_shift) {
+    for (byte i=0; i<NUM_LEDS-pos_shift; i++) { sand_burnt[i] = false; }
+    return;
+  }
+
+  for (byte i=0; i<NUM_LEDS-pos_shift; i++) {
+    if (!sand_burnt[i]) {
+      if (random8() > 240) {
+        leds_hue[i] = hue_shift + 128;
+        leds[i].setHue(leds_hue[i]);
+        sand_burnt[i] = true;
+      }
+    } else {
+      if (leds_hue[i] != hue_shift) {
+        leds_hue[i] += max(1, fps_arr[fps_idx]/50);
+        leds[i].setHue(leds_hue[i]);
+      }
+    }
+  }
 }
 
 
@@ -636,7 +669,7 @@ void holes() {
 
 void line() {
   for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-    leds[i] = CHSV(hue_shift, 255, 255);
+    leds[i].setHue(hue_shift);
   }
 }
 
@@ -672,17 +705,17 @@ void cylon_rainbow() {
 }
 
 void pixelated_hue() {
-  leds[0] = CHSV(hue_shift, 255, 255);
+  leds[0].setHue(hue_shift);
   byte curr_hue = hue_shift;
   for(byte i = 1; i < NUM_LEDS-pos_shift; i++) {
     curr_hue += 7 - random8(15);
-    leds[i] = CHSV(curr_hue, 255, 255);
+    leds[i].setHue(curr_hue);
   }
 }
 
 void pixelated_drift() {
   for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-    leds[i] = CHSV(leds_hue[i], 255, 255);
+    leds[i].setHue(leds_hue[i]);
     leds_hue[i] += 12 - random8(25);
   }
 }
@@ -710,7 +743,7 @@ void disintegrate() {
   if (channel_timer == 0) {
     uint16_t r = random16();
     for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-      leds[i] = CHSV(hue_shift - 32 + inoise8(10*i, r)/4, 255, 255);
+      leds[i].setHue(hue_shift - 32 + inoise8(10*i, r)/4);
     }
   }
 
@@ -737,7 +770,7 @@ void invade() {
     int r = random16();
     if ((r < 128) && (r > 3)) {
       for (int j = i; j <= min(NUM_LEDS-pos_shift-1, i + r/8); j++) {
-        leds[j] = CHSV(hue_shift - 96 + inoise8(5*i, noise_z)/4*3, 255, 255);
+        leds[j].setHue(hue_shift - 96 + inoise8(5*i, noise_z)/4*3);
       }
     }
   }
