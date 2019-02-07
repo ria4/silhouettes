@@ -164,7 +164,8 @@ void loop()
   if (!pause) {
     channels[channel_idx].pattern();
 
-    if (channels[channel_idx].pattern != holes) {
+    if ((channels[channel_idx].pattern != holes) &&
+        (channels[channel_idx].pattern != rgb)) {
       trapeze_fade();
     }
 
@@ -448,13 +449,17 @@ void rgb() {
   byte r = random8();
   if (r > 231) {
     if (r % 2 == 0) {
-      leds[pos_shift]   = rgb_arr[r%3];
-      leds[pos_shift+1] = rgb_arr[(r+1)%3];
-      leds[pos_shift+2] = rgb_arr[(r+2)%3];
+      for (byte i=0; i<fade_size+1; i++) {
+        leds[4+i]                                     = rgb_arr[r%3];
+        leds[(NUM_LEDS+4-pos_shift-fade_size)/2 + i]  = rgb_arr[(r+1)%3];
+        leds[NUM_LEDS-1-pos_shift - i]                = rgb_arr[(r+2)%3];
+      }
     } else {
-      leds[pos_shift]   = rgb_arr[r%3];
-      leds[pos_shift+1] = rgb_arr[(r+2)%3];
-      leds[pos_shift+2] = rgb_arr[(r+1)%3];
+      for (byte i=0; i<fade_size+1; i++) {
+        leds[4+i]                                     = rgb_arr[r%3];
+        leds[(NUM_LEDS+4-pos_shift-fade_size)/2 + i]  = rgb_arr[(r+2)%3];
+        leds[NUM_LEDS-1-pos_shift - i]                = rgb_arr[(r+1)%3];
+      }
     }
   }
 }
