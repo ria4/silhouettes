@@ -36,23 +36,22 @@ struct Channel {
   bool fade_in;
   bool auto_refresh;
 } channels[] {
+  { heartbeat, false, true },
   { rgb, false, false },
-  { sand, false, false },
   { point, false, false },
-  { lace, true, false },
-  { lace, true, false },
   { line, true, false },
-  { holes, false, false },
-  { holes, false, false },
   { pulse, false, false },
   { gradient, true, false },
-  { cylon, true, true },
-  { cylon_rainbow, true, true },
+  { noise, true, false },
+  { holes, false, false },
+  { lace, true, false },
+  { sand, false, false },
+  //{ cylon, true, true },
+  //{ cylon_rainbow, true, true },
   //{ pixelated_hue, false, false },
   //{ pixelated_drift, false, false },
-  { noise, true, false },
   //{ disintegrate, false, false },
-  { invade, false, false },
+  //{ invade, false, false },
   //{ split, false, false },
 };
 
@@ -116,8 +115,12 @@ bool sand_burnt[NUM_LEDS];
 
 const CRGB rgb_arr[3] = { CRGB::Red, CRGB::Green, CRGB::Blue };
 
+byte heartbeat_r;
+byte heartbeat_b;
+
 unsigned long start_millis;
 unsigned long last_change;
+unsigned long next_change;
 
 void set_raw_noise(byte i, byte hue_shift2=0);
 
@@ -165,6 +168,7 @@ void loop()
     channels[channel_idx].pattern();
 
     if ((channels[channel_idx].pattern != holes) &&
+        (channels[channel_idx].pattern != heartbeat) &&
         (channels[channel_idx].pattern != rgb)) {
       trapeze_fade();
     }
@@ -445,6 +449,43 @@ void point() {
 }
 
 
+void heartbeat() {
+  FastLED.clear();
+
+  if (channel_timer == 0) {
+    last_change = millis();
+    next_change = 872 + random8();
+  }
+
+  if (millis() - last_change < next_change) {
+
+    leds[44] = CRGB(255-(millis()-last_change)/4, 0, (millis()-last_change)/5);
+    heartbeat_r = leds[44].r;
+    heartbeat_b = leds[44].b;
+
+  } else {
+
+    uint32_t d = millis();
+    while (millis() - d < 296) {
+      FastLED.clear();
+      byte i = abs(beat8(200, d+88) - 128);
+      byte j = abs(beat8(200, d+88+11) - 128);
+      for (byte k=min(i,j); k<max(i,j); k++) {
+        leds[k] = CRGB(heartbeat_r, 0, heartbeat_b);
+      }
+      if (heartbeat_r != 255) { heartbeat_r += min(12, 255-heartbeat_r); }
+      if (heartbeat_b !=   0) { heartbeat_b -= min(12, heartbeat_b); }
+      FastLED.show();
+      delay(5);
+    }
+
+    last_change = millis();
+    next_change = 872 + random8();
+
+  }
+}
+
+
 void rgb() {
   byte r = random8();
   if (r > 231) {
@@ -472,9 +513,7 @@ void lace() {
     if (r < 128) {
       leds[i] = CHSV(hue_shift, 255, 255);
     } else {
-      if (channel_idx % 2 == 1) {
-        leds[i] = CHSV(hue_shift + (175-r)*2, 255, 255);
-      }
+      leds[i] = CHSV(hue_shift + (175-r)*2, 255, 255);
     }
   }
   noise_z += 15;
@@ -512,7 +551,254 @@ void sand() {
 }
 
 
+void holes_change() {
+  last_change = millis();
+  for (byte i = 0; i < hole_n; i++) { if (random8(2) < 1) { hole[i] = true; } else { hole[i] = false; } }
+}
+
+void holes() {
+  if (channel_timer == 0) {
+    if (fade_size % 3 == 0) { hole_n = 20; hole_size = 6; }
+    else if (fade_size % 3 == 1) { hole_n = 14; hole_size = 9; }
+    else { hole_n = 10; hole_size = 13; }
+    holes_hue_shift = 0;
+    /*if (channel_idx % 2 == 0) { holes_hue_shift = 0; }
+    else { holes_hue_shift = 128; }*/
+    holes_change();
+  }
+
+  FastLED.clear();
+
+  if (millis() - last_change > 50000/fps_arr[fps_idx]) {
+    holes_change();
+
+    /*if (channel_idx % 2 == 1) {
+      for(byte i = 0; i < hole_n*(hole_size+1)+1; i++) {
+        set_raw_noise(i, holes_hue_shift);
+      }
+      FastLED.show();
+      delay(5000/fps_arr[fps_idx]);
+      return;
+    }*/
+  }
+
+  byte start = 0;
+  for(byte i = 0; i < hole_n; i++) {
+    set_raw_noise(start, holes_hue_shift);
+    if (!hole[i]) {
+      for(byte j = start+1; j < start+1+hole_size; j++) {
+        set_raw_noise(j);
+      }
+    }
+    start += hole_size + 1;
+  }
+  set_raw_noise(hole_n*(hole_size+1), holes_hue_shift);
+  noise_z += 15;
+}
+
+
+void line() {
+  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
+    leds[i].setHue(hue_shift);
+  }
+}
+
+void pulse() {
+  byte beat = beatsin8(fps_arr[fps_idx], 0, 255);
+  fill_solid(leds, NUM_LEDS-pos_shift, CHSV(hue_shift, 255, beat));
+  //fill_solid(&(leds[pos_shift]), NUM_LEDS-pos_shift, CHSV(hue_shift, 255, beat));
+}
+
+void gradient() {
+  byte beat = beatsin8(fps_arr[fps_idx], 0, 100);
+  fill_gradient(leds, NUM_LEDS-pos_shift, CHSV(hue_shift+beat*2, 255, 255), CHSV(hue_shift+beat+50, 255, 255));
+}
+
+void cylon() {
+  FastLED.clear();
+  int beat = beatsin16(fps_arr[fps_idx], 0, (NUM_LEDS-1 - pos_shift - 2*fade_size)<<8);
+  byte beat8 = (byte) (beat>>8);
+  for(byte i = beat8+1; i < beat8+2*fade_size; i++) {
+    int angle = ((i<<8) - beat) / (2*fade_size);
+    leds[i] = CHSV(hue_shift, 255, quadwave8((byte) angle));
+  }
+}
+
+void cylon_rainbow() {
+  FastLED.clear();
+  int beat = beatsin16(fps_arr[fps_idx], 0, (NUM_LEDS-1 - pos_shift - 2*fade_size)<<8);
+  byte beat8 = (byte) (beat>>8);
+  for(byte i = beat8+1; i < beat8+2*fade_size; i++) {
+    int angle = ((i<<8) - beat) / (2*fade_size);
+    leds[i] = CHSV(gHue+(i-beat8-fade_size)*3, 255, quadwave8((byte) angle));
+  }
+}
+
+void pixelated_hue() {
+  leds[0].setHue(hue_shift);
+  byte curr_hue = hue_shift;
+  for(byte i = 1; i < NUM_LEDS-pos_shift; i++) {
+    curr_hue += 7 - random8(15);
+    leds[i].setHue(curr_hue);
+  }
+}
+
+void pixelated_drift() {
+  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
+    leds[i].setHue(leds_hue[i]);
+    leds_hue[i] += 12 - random8(25);
+  }
+}
+
+
+void set_raw_noise(byte i, byte hue_shift2) {
+  leds[i] = CHSV(hue_shift + hue_shift2 + inoise8((1+fade_size)*i, noise_z)/2, 192 + (inoise8((1+fade_size)*i, noise_z) >> 2), 255);
+}
+
+void noise() {
+  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
+    set_raw_noise(i);
+  }
+  noise_z += 15;
+}
+
+void noise_fade_out() {
+  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
+    leds[i] = CHSV(hue_shift - 64 + (inoise8((1+fade_size)*i, noise_z*2) >> 2), 255, 64 + (inoise8((1+fade_size)*i, noise_z) >> 2)*3);
+    leds[i].nscale8(255-channel_timer);
+  }
+  noise_z += 15;
+}
+
+
+void disintegrate() {
+  if (channel_timer == 0) {
+    uint16_t r = random16();
+    for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
+      leds[i].setHue(hue_shift - 32 + inoise8(10*i, r)/4);
+    }
+  }
+
+  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
+    if (leds[i]) {
+      byte neighbours = neighbours_up(i);
+      if (((neighbours == 0) && (random8() < 16)) ||
+          ((neighbours == 1) && (random8() < 8)) ||
+          ((neighbours == 2) && (random16() < 32))) {
+        leds[i] = 0;
+      }
+    }
+  }
+}
+
+void invade() {
+  if (random8() < 220) {
+    for (byte i = 0; i < NUM_LEDS-pos_shift; i++) {
+      leds[i].fadeToBlackBy(1);
+    }
+  }
+
+  for (byte i = 1; i < NUM_LEDS-pos_shift-1; i++) {
+    int r = random16();
+    if ((r < 128) && (r > 3)) {
+      for (int j = i; j <= min(NUM_LEDS-pos_shift-1, i + r/8); j++) {
+        leds[j].setHue(hue_shift - 96 + inoise8(5*i, noise_z)/4*3);
+      }
+    }
+  }
+  noise_z += 10;
+}
+
+void split() {
+  byte middle = (NUM_LEDS-pos_shift)/2;
+
+  split_start = middle - 52 + inoise8(20, noise_z)/3;
+  split_size = inoise8(20, 2*noise_z)/6;
+  if (split_size % 2 == 1) { split_size += 1; }
+  split_hue_top = hue_shift - 85 + inoise8(20, 3*noise_z)/3;
+
+  fill_gradient(leds, split_start, CHSV(hue_shift, 255, 255), CHSV(split_hue_top, 255, 255));
+  fill_gradient(&(leds[split_start]), split_size/2, CHSV(split_hue_top, 255, 255), CHSV(split_hue_top, 0, 0));
+  fill_gradient(&(leds[split_start+split_size/2]), split_size/2, CHSV(split_hue_top, 0, 0), CHSV(split_hue_top, 255, 255));
+  fill_gradient(&(leds[split_start+split_size]), NUM_LEDS-pos_shift-split_size-split_start, CHSV(split_hue_top, 255, 255), CHSV(hue_shift, 255, 255));
+
+  noise_z += 10;
+}
+
 /*
+void strikes()
+{
+  if ( random8() < 20 ) {
+    byte size;
+    switch((pos_shift / 10) % 10) {
+      case 1:
+        size = 1; break;
+      case 2:
+        size = 25; break;
+      case 3:
+        size = NUM_LEDS; break;
+      default:
+        size = 25 + (7 - random8(14));
+    }
+
+    byte hue;
+    switch(pos_shift / 100) {
+      case 1:
+        hue = hue_shift + (30 - random8(60)); break;
+      case 2:
+        hue = random8(); break;
+      default:
+        hue = hue_shift;
+    }
+
+    byte start = random8(NUM_LEDS - size);
+    fill_solid(&(leds[start]), size, CHSV(hue, 255, 255));
+    FastLED.show();
+
+    byte del;
+    switch(pos_shift % 10) {
+      case 1:
+        del = 2; break;
+      case 2:
+        del = 15; break;
+      case 3:
+        del = 500; break;
+      default:
+        del = 50;
+    }
+    delay(del);
+
+    FastLED.clear();
+    FastLED.show();
+  }
+}
+
+void splash()
+{
+  // random colored splashes that fade smoothly
+  fadeToBlackBy(leds, NUM_LEDS, 1);
+  if (random8() < 4) {
+    byte size;
+    if (pos_shift == 0) { size = 20; }
+    else { size = min(pos_shift, 140); }
+    byte pos = random8(NUM_LEDS-1 - size);
+
+    bool overlap = false;
+    for(byte i = pos; i < pos+size; i++) {
+      overlap |= leds[i];
+    }
+
+    if (!overlap) {
+      for(byte i = pos; i < pos+size; i++) {
+        byte theta = (pos+(size/2)-i) * 255 / (2*size);
+        byte val = cos8(theta) - 1;          // library bug? val cannot be 255 below
+        leds[i] = CHSV(hue_shift, 230, val);
+      }
+    }
+  }
+}
+
+
 void quarks_collide() {
   if (channel_timer == 0) {
     start_millis = millis();
@@ -659,255 +945,6 @@ void quarks_deco() {
     }
   }
   noise_z += 5;
-}
-*/
-
-
-void holes_change() {
-  last_change = millis();
-  for (byte i = 0; i < hole_n; i++) { if (random8(2) < 1) { hole[i] = true; } else { hole[i] = false; } }
-}
-
-void holes() {
-  if (channel_timer == 0) {
-    start_millis = millis();
-    if (fade_size % 3 == 0) { hole_n = 20; hole_size = 6; }
-    else if (fade_size % 3 == 1) { hole_n = 14; hole_size = 9; }
-    else { hole_n = 10; hole_size = 13; }
-    if (channel_idx % 2 == 0) { holes_hue_shift = 0; }
-    else { holes_hue_shift = 128; }
-    holes_change();
-  }
-
-  FastLED.clear();
-
-  if (millis() - last_change > 50000/fps_arr[fps_idx]) {
-    holes_change();
-
-    if (channel_idx % 2 == 1) {
-      for(byte i = 0; i < hole_n*(hole_size+1)+1; i++) {
-        set_raw_noise(i, holes_hue_shift);
-      }
-      FastLED.show();
-      delay(5000/fps_arr[fps_idx]);
-      return;
-    }
-  }
-
-  byte start = 0;
-  for(byte i = 0; i < hole_n; i++) {
-    set_raw_noise(start, holes_hue_shift);
-    if (!hole[i]) {
-      for(byte j = start+1; j < start+1+hole_size; j++) {
-        set_raw_noise(j);
-      }
-    }
-    start += hole_size + 1;
-  }
-  set_raw_noise(hole_n*(hole_size+1), holes_hue_shift);
-  noise_z += 15;
-}
-
-
-void line() {
-  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-    leds[i].setHue(hue_shift);
-  }
-}
-
-void pulse() {
-  byte beat = beatsin8(fps_arr[fps_idx], 0, 255);
-  fill_solid(leds, NUM_LEDS-pos_shift, CHSV(hue_shift, 255, beat));
-  //fill_solid(&(leds[pos_shift]), NUM_LEDS-pos_shift, CHSV(hue_shift, 255, beat));
-}
-
-void gradient() {
-  byte beat = beatsin8(fps_arr[fps_idx], 0, 100);
-  fill_gradient(leds, NUM_LEDS-pos_shift, CHSV(hue_shift+beat*2, 255, 255), CHSV(hue_shift+beat+50, 255, 255));
-}
-
-void cylon() {
-  FastLED.clear();
-  int beat = beatsin16(fps_arr[fps_idx], 0, (NUM_LEDS-1 - pos_shift - 2*fade_size)<<8);
-  byte beat8 = (byte) (beat>>8);
-  for(byte i = beat8+1; i < beat8+2*fade_size; i++) {
-    int angle = ((i<<8) - beat) / (2*fade_size);
-    leds[i] = CHSV(hue_shift, 255, quadwave8((byte) angle));
-  }
-}
-
-void cylon_rainbow() {
-  FastLED.clear();
-  int beat = beatsin16(fps_arr[fps_idx], 0, (NUM_LEDS-1 - pos_shift - 2*fade_size)<<8);
-  byte beat8 = (byte) (beat>>8);
-  for(byte i = beat8+1; i < beat8+2*fade_size; i++) {
-    int angle = ((i<<8) - beat) / (2*fade_size);
-    leds[i] = CHSV(gHue+(i-beat8-fade_size)*3, 255, quadwave8((byte) angle));
-  }
-}
-
-void pixelated_hue() {
-  leds[0].setHue(hue_shift);
-  byte curr_hue = hue_shift;
-  for(byte i = 1; i < NUM_LEDS-pos_shift; i++) {
-    curr_hue += 7 - random8(15);
-    leds[i].setHue(curr_hue);
-  }
-}
-
-void pixelated_drift() {
-  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-    leds[i].setHue(leds_hue[i]);
-    leds_hue[i] += 12 - random8(25);
-  }
-}
-
-void set_raw_noise(byte i, byte hue_shift2) {
-  leds[i] = CHSV(hue_shift + hue_shift2 + inoise8((1+fade_size)*i, noise_z)/2, 192 + (inoise8((1+fade_size)*i, noise_z) >> 2), 255);
-}
-
-void noise() {
-  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-    set_raw_noise(i);
-  }
-  noise_z += 15;
-}
-
-/*
-void noise_fade_out() {
-  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-    leds[i] = CHSV(hue_shift - 64 + (inoise8((1+fade_size)*i, noise_z*2) >> 2), 255, 64 + (inoise8((1+fade_size)*i, noise_z) >> 2)*3);
-    leds[i].nscale8(255-channel_timer);
-  }
-  noise_z += 15;
-}
-*/
-
-void disintegrate() {
-  if (channel_timer == 0) {
-    uint16_t r = random16();
-    for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-      leds[i].setHue(hue_shift - 32 + inoise8(10*i, r)/4);
-    }
-  }
-
-  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-    if (leds[i]) {
-      byte neighbours = neighbours_up(i);
-      if (((neighbours == 0) && (random8() < 16)) ||
-          ((neighbours == 1) && (random8() < 8)) ||
-          ((neighbours == 2) && (random16() < 32))) {
-        leds[i] = 0;
-      }
-    }
-  }
-}
-
-void invade() {
-  if (random8() < 220) {
-    for (byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-      leds[i].fadeToBlackBy(1);
-    }
-  }
-
-  for (byte i = 1; i < NUM_LEDS-pos_shift-1; i++) {
-    int r = random16();
-    if ((r < 128) && (r > 3)) {
-      for (int j = i; j <= min(NUM_LEDS-pos_shift-1, i + r/8); j++) {
-        leds[j].setHue(hue_shift - 96 + inoise8(5*i, noise_z)/4*3);
-      }
-    }
-  }
-  noise_z += 10;
-}
-
-void split() {
-  byte middle = (NUM_LEDS-pos_shift)/2;
-
-  split_start = middle - 52 + inoise8(20, noise_z)/3;
-  split_size = inoise8(20, 2*noise_z)/6;
-  if (split_size % 2 == 1) { split_size += 1; }
-  split_hue_top = hue_shift - 85 + inoise8(20, 3*noise_z)/3;
-
-  fill_gradient(leds, split_start, CHSV(hue_shift, 255, 255), CHSV(split_hue_top, 255, 255));
-  fill_gradient(&(leds[split_start]), split_size/2, CHSV(split_hue_top, 255, 255), CHSV(split_hue_top, 0, 0));
-  fill_gradient(&(leds[split_start+split_size/2]), split_size/2, CHSV(split_hue_top, 0, 0), CHSV(split_hue_top, 255, 255));
-  fill_gradient(&(leds[split_start+split_size]), NUM_LEDS-pos_shift-split_size-split_start, CHSV(split_hue_top, 255, 255), CHSV(hue_shift, 255, 255));
-
-  noise_z += 10;
-}
-
-/*
-void strikes()
-{
-  if ( random8() < 20 ) {
-    byte size;
-    switch((pos_shift / 10) % 10) {
-      case 1:
-        size = 1; break;
-      case 2:
-        size = 25; break;
-      case 3:
-        size = NUM_LEDS; break;
-      default:
-        size = 25 + (7 - random8(14));
-    }
-
-    byte hue;
-    switch(pos_shift / 100) {
-      case 1:
-        hue = hue_shift + (30 - random8(60)); break;
-      case 2:
-        hue = random8(); break;
-      default:
-        hue = hue_shift;
-    }
-
-    byte start = random8(NUM_LEDS - size);
-    fill_solid(&(leds[start]), size, CHSV(hue, 255, 255));
-    FastLED.show();
-
-    byte del;
-    switch(pos_shift % 10) {
-      case 1:
-        del = 2; break;
-      case 2:
-        del = 15; break;
-      case 3:
-        del = 500; break;
-      default:
-        del = 50;
-    }
-    delay(del);
-
-    FastLED.clear();
-    FastLED.show();
-  }
-}
-
-void splash()
-{
-  // random colored splashes that fade smoothly
-  fadeToBlackBy(leds, NUM_LEDS, 1);
-  if (random8() < 4) {
-    byte size;
-    if (pos_shift == 0) { size = 20; }
-    else { size = min(pos_shift, 140); }
-    byte pos = random8(NUM_LEDS-1 - size);
-
-    bool overlap = false;
-    for(byte i = pos; i < pos+size; i++) {
-      overlap |= leds[i];
-    }
-
-    if (!overlap) {
-      for(byte i = pos; i < pos+size; i++) {
-        byte theta = (pos+(size/2)-i) * 255 / (2*size);
-        byte val = cos8(theta) - 1;          // library bug? val cannot be 255 below
-        leds[i] = CHSV(hue_shift, 230, val);
-      }
-    }
-  }
 }
 
 
