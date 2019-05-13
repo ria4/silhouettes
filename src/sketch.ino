@@ -2,8 +2,10 @@
 // Preamble
 
 #include "FastLED.h"
-#include "IRremote.h"
 //#include "SD.h"
+#include "silhouettes.h"
+#include "patterns/pulse.h"
+#include "IRremote.h"
 
 
 FASTLED_USING_NAMESPACE
@@ -17,21 +19,23 @@ FASTLED_USING_NAMESPACE
 
 #define LED_TYPE    WS2812B
 #define COLOR_ORDER GRB
-#define NUM_LEDS    143
+//#define NUM_LEDS    143
 
 #define BUTTON_PIN    2
 #define IRRCV_PIN     9
 #define STRIP_PIN     6
 
-#define FPS_MODES_NBR           5
+//#define FPS_MODES_NBR           5
 #define CHANGE_SIG_LENGTH       50
 
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 
 
-CRGB leds[NUM_LEDS];
+//CRGB leds[NUM_LEDS];
 byte leds_hue[NUM_LEDS];
 
+Channel channels[1] = { pulse };
+/*
 struct Channel {
   void (*pattern)();
   bool fade_in;
@@ -68,6 +72,7 @@ struct Channel {
   //{ invade, false, false },
   //{ split, false, false },
 };
+*/
 
 const byte channels_nbr = ARRAY_SIZE(channels);
 byte channel_idx = 0;
@@ -76,20 +81,20 @@ byte channel_idx_tmp;
 bool pause = false;
 byte channel_timer = 0;
 
-const int fps_arr[FPS_MODES_NBR] = { 3, 12, 50, 200, 1000 };      // the frame rate may cap by itself
+//const int fps_arr[FPS_MODES_NBR] = { 3, 12, 50, 200, 1000 };      // the frame rate may cap by itself
 
 IRrecv irrecv(IRRCV_PIN);
 decode_results results;
 char ir_buffer[3];
 byte curr_char_idx = 0;
-byte pos_shift = 0;
-byte hue_shift = 0;
+//byte pos_shift = 0;
+//byte hue_shift = 0;
 byte fade_size = 0;
 
 static uint16_t noise_z;
 
 byte brightness = 15;
-byte fps_idx = 2;
+//byte fps_idx = 2;
 byte gHue = 0;
 
 byte split_start;
@@ -721,12 +726,6 @@ void line() {
   for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
     leds[i].setHue(hue_shift);
   }
-}
-
-void pulse() {
-  byte beat = beatsin8(fps_arr[fps_idx], 0, 255);
-  fill_solid(leds, NUM_LEDS-pos_shift, CHSV(hue_shift, 255, beat));
-  //fill_solid(&(leds[pos_shift]), NUM_LEDS-pos_shift, CHSV(hue_shift, 255, beat));
 }
 
 void gradient() {
