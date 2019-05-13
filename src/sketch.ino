@@ -1,10 +1,9 @@
-
 // Preamble
 
 #include "FastLED.h"
-//#include "SD.h"
 #include "silhouettes.h"
 #include "patterns/pulse.h"
+#include "patterns/sd_read.h"
 #include "IRremote.h"
 
 
@@ -17,6 +16,8 @@ FASTLED_USING_NAMESPACE
 
 // Constants & Variables
 
+//#define DEBUG
+
 #define LED_TYPE    WS2812B
 #define COLOR_ORDER GRB
 //#define NUM_LEDS    143
@@ -28,13 +29,13 @@ FASTLED_USING_NAMESPACE
 //#define FPS_MODES_NBR           5
 #define CHANGE_SIG_LENGTH       50
 
-#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
+//#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 
 
 //CRGB leds[NUM_LEDS];
 byte leds_hue[NUM_LEDS];
 
-Channel channels[1] = { pulse };
+Channel channels[] = { pulse };
 /*
 struct Channel {
   void (*pattern)();
@@ -74,12 +75,11 @@ struct Channel {
 };
 */
 
-const byte channels_nbr = ARRAY_SIZE(channels);
-byte channel_idx = 0;
-byte channel_idx_tmp;
+//byte channel_idx = 0;
+//byte channel_idx_tmp;
 
-bool pause = false;
-byte channel_timer = 0;
+//bool pause = false;
+//byte channel_timer = 0;
 
 //const int fps_arr[FPS_MODES_NBR] = { 3, 12, 50, 200, 1000 };      // the frame rate may cap by itself
 
@@ -89,7 +89,7 @@ char ir_buffer[3];
 byte curr_char_idx = 0;
 //byte pos_shift = 0;
 //byte hue_shift = 0;
-byte fade_size = 0;
+//byte fade_size = 0;
 
 static uint16_t noise_z;
 
@@ -143,25 +143,16 @@ unsigned long next_change;
 
 void set_raw_noise(byte i, byte hue_shift2=0);
 
-/*
-File silhouette;
-char silhouette_name[7];
-byte sd_idx;
-byte sd_params;
-bool sd_loop;
-int sd_width;
-int sd_frames_nbr;
-int sd_frame_idx;
-byte r, g, b;
-*/
-
 
 // Main Functions
 
 void setup() {
   delay(200);
-  //Serial.begin(9600); Serial.println(F("Resetting..."));
+  #ifdef DEBUG
+  Serial.begin(9600); Serial.println(F("Resetting..."));
+  #endif
 
+  channels_nbr = ARRAY_SIZE(channels);
   FastLED.addLeds<LED_TYPE,STRIP_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
   FastLED.setBrightness(brightness);
   reset_leds_hue();
@@ -170,15 +161,21 @@ void setup() {
 
   noise_z = random16();
 
-  /*
-  //Serial.print(F("Trying to init SD card... "));
-  pinMode(10, OUTPUT);
-  if (!SD.begin(10)) {
-    //Serial.println(F("init failed!"));
-    return;
-  }
-  //Serial.println(F("OK!"));
-  */
+  #ifdef SD_READ
+    #ifdef DEBUG
+    Serial.print(F("Trying to init SD card... "));
+    #endif
+    pinMode(10, OUTPUT);
+    if (!SD.begin(10)) {
+      #ifdef DEBUG
+      Serial.println(F("init failed!"));
+      #endif
+      return;
+    }
+    #ifdef DEBUG
+    Serial.println(F("OK!"));
+    #endif
+  #endif
 }
 
 void loop()
@@ -287,9 +284,13 @@ void flushChannelBuffer() {
     channel_idx = channel_idx_tmp;
     reset_leds_hue();
     signal(255);
-    //if (channel_idx == 0) { signal(0); } else { signal(255); }
+    #ifdef SD_READ
+    if (channel_idx == 0) { signal(0); } else { signal(255); }
+    #endif
   }
-  //else { if (set_sd_silhouette(channel_idx_tmp)) { channel_idx = 0; signal(0); } }
+  #ifdef SD_READ
+  else { if (set_sd_silhouette(channel_idx_tmp)) { channel_idx = 0; signal(0); } }
+  #endif
   curr_char_idx = 0;
 }
 
@@ -431,7 +432,7 @@ void signal(byte rb) {
 }
 
 void prevChannel() {
-/*
+  #ifdef SD_READ
   if (channel_idx == 0) {
     if (set_sd_silhouette(sd_idx - 1)) { signal(0); return; }
     else { channel_idx = channels_nbr - 1; } }
@@ -440,14 +441,15 @@ void prevChannel() {
       if (set_sd_silhouette(sd_idx)) { channel_idx = 0; signal(0); return; }
       else { channel_idx = channels_nbr - 1; } }
     else { channel_idx--; } }
-*/
+  #else
   if (channel_idx == 0) { channel_idx = channels_nbr-1; } else { channel_idx--; }
+  #endif
   reset_leds_hue();
   signal(255);
 }
 
 void nextChannel() {
-/*
+  #ifdef SD_READ
   if (channel_idx == 0) {
     if (set_sd_silhouette(sd_idx + 1)) { signal(0); return; }
     else { channel_idx = 1; } }
@@ -456,8 +458,9 @@ void nextChannel() {
       if (set_sd_silhouette(sd_idx)) { channel_idx = 0; signal(0); return; }
       else { channel_idx = 0; } }
     else { channel_idx++; } }
-*/
+  #else
   if (channel_idx == channels_nbr-1) { channel_idx = 0; } else { channel_idx++; }
+  #endif
   reset_leds_hue();
   signal(255);
 }
@@ -1172,73 +1175,6 @@ void juggle() {
     int jpulse = (i+13)/3;
     leds[beatsin16( jpulse, 0, NUM_LEDS-1 )] |= CHSV(dothue, 200, 255);
     dothue += 32;
-  }
-}
-*/
-
-
-// SC Card Image Import
-
-/*
-bool set_sd_silhouette(byte n) {
-  if (silhouette) { silhouette.close(); }
-  sprintf(silhouette_name, "%03d", n);
-  strcpy(silhouette_name + 3, ".SIL");
-  silhouette = SD.open(silhouette_name, FILE_READ);
-  if (silhouette) {
-    //Serial.print(F("Opened "));
-    //Serial.println(silhouette_name);
-    sd_frame_idx = 0;
-    sd_idx = n;
-    sd_params = silhouette.read();
-    sd_loop = (sd_params >> 7);
-    sd_width = (silhouette.read() << 8) + silhouette.read();
-    sd_frames_nbr = (silhouette.read() << 8) + silhouette.read();
-    return true;
-  } else {
-    //Serial.print(F("Failed to open "));
-    //Serial.println(silhouette_name);
-    return false;
-  }
-}
-
-void read_sd()
-{
-  if ((sd_idx == 0) || (!silhouette && !set_sd_silhouette(sd_idx))) {
-    channel_idx = 1;
-    return;
-  }
-
-  //if (silhouette) { return; }
-
-  //Serial.print(F("Available from SD: "));
-  //Serial.println(silhouette.available());
-  if (silhouette && silhouette.available()) {
-    //Serial.print(F("Remaining SRAM: "));
-    //Serial.println(freeRam());
-    for (int j=0; j<sd_width; j++) {
-      r = silhouette.read();
-      g = silhouette.read();
-      b = silhouette.read();
-      if (fade_size == 0) {
-        leds[j] = CRGB(r, g, b);		// note that CRGB class would first retrieve b, then g, then r
-      } else {
-        leds[NUM_LEDS-1-pos_shift - j] = CRGB(r, g, b);
-      }
-    }
-    sd_frame_idx++;
-  }
-
-  if (sd_frame_idx == sd_frames_nbr) {
-    sd_frame_idx = 0;
-    if (sd_loop) {
-      silhouette.seek(5);
-    } else {
-      silhouette.close();
-      FastLED.clear();
-      FastLED.show();
-      pause = true;
-    }
   }
 }
 */
