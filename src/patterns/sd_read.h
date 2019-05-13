@@ -40,7 +40,7 @@ bool set_sd_silhouette(byte n) {
 }
 
 
-void read_sd()
+void sd_read_p()
 {
   if ((sd_idx == 0) || (!silhouette && !set_sd_silhouette(sd_idx))) {
     channel_idx = 1;
@@ -84,3 +84,6 @@ void read_sd()
     }
   }
 }
+
+
+Channel sd_read = { sd_read_p, false, false, true };

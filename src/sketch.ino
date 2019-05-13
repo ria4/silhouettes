@@ -1,10 +1,13 @@
 // Preamble
 
 #include "FastLED.h"
-#include "silhouettes.h"
-#include "patterns/pulse.h"
-#include "patterns/sd_read.h"
 #include "IRremote.h"
+
+#include "silhouettes.h"
+#include "patterns/point.h"
+#include "patterns/line.h"
+#include "patterns/pulse.h"
+#include "patterns/confetti.h"
 
 
 FASTLED_USING_NAMESPACE
@@ -18,31 +21,16 @@ FASTLED_USING_NAMESPACE
 
 //#define DEBUG
 
-#define LED_TYPE    WS2812B
-#define COLOR_ORDER GRB
-//#define NUM_LEDS    143
-
-#define BUTTON_PIN    2
-#define IRRCV_PIN     9
-#define STRIP_PIN     6
-
-//#define FPS_MODES_NBR           5
-#define CHANGE_SIG_LENGTH       50
-
-//#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
-
-
-//CRGB leds[NUM_LEDS];
 byte leds_hue[NUM_LEDS];
 
-Channel channels[] = { pulse };
+Channel channels[] = {
+  point,
+  line,
+  pulse,
+  confetti,
+};
 /*
-struct Channel {
-  void (*pattern)();
-  bool fade_in;
-  bool auto_refresh;
 } channels[] {
-  { point, false, false },
   { strikes, false, true },
   //{ window, false, false },
   { spaces, true, false },
@@ -52,8 +40,6 @@ struct Channel {
   { glitch_correct, false, false },
   { glitch_correct, false, false },
   //{ line_flashes, false, true },
-  { line, true, false },
-  { pulse, false, false },
   { gradient, true, false },
   { noise, true, false },
   { holes, false, false },
@@ -65,8 +51,6 @@ struct Channel {
   { border_i2, true, false },
   { border_i3, true, false },
   //{ rgb, false, false },
-  //{ cylon, true, true },
-  //{ cylon_rainbow, true, true },
   //{ pixelated_hue, false, false },
   //{ pixelated_drift, false, false },
   //{ disintegrate, false, false },
@@ -75,55 +59,14 @@ struct Channel {
 };
 */
 
-//byte channel_idx = 0;
-//byte channel_idx_tmp;
-
-//bool pause = false;
-//byte channel_timer = 0;
-
-//const int fps_arr[FPS_MODES_NBR] = { 3, 12, 50, 200, 1000 };      // the frame rate may cap by itself
-
 IRrecv irrecv(IRRCV_PIN);
 decode_results results;
 char ir_buffer[3];
 byte curr_char_idx = 0;
-//byte pos_shift = 0;
-//byte hue_shift = 0;
-//byte fade_size = 0;
-
-static uint16_t noise_z;
-
-byte brightness = 15;
-//byte fps_idx = 2;
-byte gHue = 0;
 
 byte split_start;
 byte split_size;
 byte split_hue_top;
-
-/*
-const byte QUARKS_MAX = 64;
-const byte QUARK_DEF_SIZE = 3;
-typedef struct Quark {
-  int pos; byte pos8;
-  int a; int b;
-  byte size;
-  byte h; byte s;
-  bool move_away = false;
-};
-Quark quarks[QUARKS_MAX];
-byte quarks_n;
-
-typedef struct QuarkDeco {
-  Quark qk;
-  byte n = 8;
-  bool line[8];         // n
-  bool gap[7];          // n-1
-  byte gap_size[7];     // n-1
-  byte size;
-};
-QuarkDeco qkd;
-*/
 
 bool hole[20];
 byte hole_n;
@@ -136,10 +79,6 @@ byte heartbeat_r;
 byte heartbeat_b;
 
 byte line_flashes_cnt;
-
-unsigned long start_millis;
-unsigned long last_change;
-unsigned long next_change;
 
 void set_raw_noise(byte i, byte hue_shift2=0);
 
@@ -183,24 +122,25 @@ void loop()
   if (!pause) {
     channels[channel_idx].pattern();
 
-    if ((channels[channel_idx].pattern != holes) &&
-        (channels[channel_idx].pattern != heartbeat) &&
-        (channels[channel_idx].pattern != border) &&
-        (channels[channel_idx].pattern != window) &&
-        (channels[channel_idx].pattern != rgb)) {
-      trapeze_fade();
+    //if ((channels[channel_idx].pattern != holes) &&
+    //    (channels[channel_idx].pattern != heartbeat) &&
+    //    (channels[channel_idx].pattern != border) &&
+    //    (channels[channel_idx].pattern != window) &&
+    //    (channels[channel_idx].pattern != rgb)) {
+    if (channels[channel_idx].fade_edges) {
+      fade_edges();
     }
 
     if (channel_timer < 255) {
       EVERY_N_MILLISECONDS(20) { channel_timer += 1; }
     }
-    if (channels[channel_idx].fade_in) {
+    if (channels[channel_idx].fade_init) {
       if (channel_timer < 50) {
         timer_fade_in();
       }
     }
 
-    EVERY_N_MILLISECONDS(10) { gHue += random8(10); }
+    EVERY_N_MILLISECONDS(10) { hue_warp += random8(10); }
   }
 
   while (!irrecv.isIdle());
@@ -210,8 +150,9 @@ void loop()
     FastLED.show();
     // long delays with FastLED cause long periods when the IRremote cannot catch interrupts
     //FastLED.delay(1000/fps_arr[fps_idx]);
-    if (channels[channel_idx].auto_refresh) { delay(5); }
+    if (channels[channel_idx].self_refresh) { delay(5); }
     else { delay(1000/fps_arr[fps_idx]); }
+    //TODO init this static array
   }
 }
 
@@ -224,13 +165,13 @@ byte neighbours_up(byte i) {
   return ((byte) leds[i-1]) + ((byte) leds[i+1]);
 }
 
-byte trapeze_val(byte min_val, byte i) {
+byte fade_edges_px(byte min_val, byte i) {
   return 255 + ((255-min_val)/(2*fade_size)) * (NUM_LEDS-1-2*fade_size-pos_shift - abs(i - fade_size) - abs(i - (NUM_LEDS-1-pos_shift - fade_size)));
 }
 
-void trapeze_fade() {
+void fade_edges() {
   for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-    leds[i].nscale8(trapeze_val(0, i));
+    leds[i].nscale8(fade_edges_px(0, i));
   }
 }
 
@@ -242,12 +183,11 @@ void timer_fade_in() {
 
 void reset_leds_hue() {
   for (byte i = 0; i < NUM_LEDS; i++) { leds_hue[i] = hue_shift; }
-}
-
-/*
-void reset_leds_hue()
-{
-  //Serial.print(F("Remaining SRAM: ")); Serial.println(freeRam());
+  /*
+  // use this to free memory (leds_hue must be used by the last channel only)
+  #ifdef DEBUG
+  Serial.print(F("Remaining SRAM: ")); Serial.println(freeRam());
+  #endif
   if (channel_idx == channels_nbr-1) {
     leds_hue = (byte*) malloc(NUM_LEDS);
     for (byte i = 0; i < NUM_LEDS; i++) { leds_hue[i] = hue_shift; }
@@ -255,18 +195,11 @@ void reset_leds_hue()
     free(leds_hue);
     leds_hue = NULL;
   }
-  //Serial.print(F("Remaining SRAM: ")); Serial.println(freeRam());
+  #ifdef DEBUG
+  Serial.print(F("Remaining SRAM: ")); Serial.println(freeRam());
+  #endif
+  */
 }
-*/
-
-/*
-int freeRam()
-{
-  extern int __heap_start, *__brkval;
-  int v;
-  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
-}
-*/
 
 
 // Variables Updating
@@ -397,7 +330,8 @@ void checkIRSignal()
 
       case 0xFF22DD:
       case 0x52A3D41F:
-        if (fps_idx > 0) { fps_idx -= 1; } break;     // no loop here, there might be a long FastLED.delay
+        if (fps_idx > 0) { fps_idx -= 1; } break;
+        // no loop here, there might be a long FastLED.delay
 
       case 0xFF02FD:
       case 0xD7E84B1B:
@@ -409,7 +343,10 @@ void checkIRSignal()
         if (!pause) { channel_timer = 0; } break;
 
       default:
-        break; //Serial.println(results.value, HEX);
+        break;
+        #ifdef DEBUG
+        Serial.println(results.value, HEX);
+        #endif
 
     }
     delay(50);
@@ -467,10 +404,6 @@ void nextChannel() {
 
 
 // Channels
-
-void point() {
-  leds[pos_shift].setHue(hue_shift);
-}
 
 
 void heartbeat() {
@@ -719,41 +652,9 @@ void holes() {
 }
 
 
-void line() {
-/*
-  hue_shift = 255/6 * ((channel_idx-1) % 6);
-  for(byte i = pos_shift; i < NUM_LEDS; i++) {
-    leds[i].setHue(hue_shift);
-  }
-*/
-  for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-    leds[i].setHue(hue_shift);
-  }
-}
-
 void gradient() {
   byte beat = beatsin8(fps_arr[fps_idx], 0, 100);
   fill_gradient(leds, NUM_LEDS-pos_shift, CHSV(hue_shift+beat*2, 255, 255), CHSV(hue_shift+beat+50, 255, 255));
-}
-
-void cylon() {
-  FastLED.clear();
-  int beat = beatsin16(fps_arr[fps_idx], 0, (NUM_LEDS-1 - pos_shift - 2*fade_size)<<8);
-  byte beat8 = (byte) (beat>>8);
-  for(byte i = beat8+1; i < beat8+2*fade_size; i++) {
-    int angle = ((i<<8) - beat) / (2*fade_size);
-    leds[i] = CHSV(hue_shift, 255, quadwave8((byte) angle));
-  }
-}
-
-void cylon_rainbow() {
-  FastLED.clear();
-  int beat = beatsin16(fps_arr[fps_idx], 0, (NUM_LEDS-1 - pos_shift - 2*fade_size)<<8);
-  byte beat8 = (byte) (beat>>8);
-  for(byte i = beat8+1; i < beat8+2*fade_size; i++) {
-    int angle = ((i<<8) - beat) / (2*fade_size);
-    leds[i] = CHSV(gHue+(i-beat8-fade_size)*3, 255, quadwave8((byte) angle));
-  }
 }
 
 void pixelated_hue() {
@@ -892,289 +793,3 @@ void split() {
 
   noise_z += 10;
 }
-
-void strikes()
-{
-  if ( random8() < 20 ) {
-    byte size;
-    switch((pos_shift / 10) % 10) {
-      case 1:
-        size = 1; break;
-      case 2:
-        size = 25; break;
-      case 3:
-        size = NUM_LEDS; break;
-      default:
-        size = 25 + (7 - random8(14));
-    }
-
-    byte hue;
-    switch(pos_shift / 100) {
-      case 1:
-        hue = hue_shift + (30 - random8(60)); break;
-      case 2:
-        hue = random8(); break;
-      default:
-        hue = hue_shift;
-    }
-
-    byte start = random8(NUM_LEDS - size);
-    fill_solid(&(leds[start]), size, CHSV(hue, 255, 255));
-    FastLED.show();
-
-    byte del;
-    switch(pos_shift % 10) {
-      case 1:
-        del = 2; break;
-      case 2:
-        del = 15; break;
-      case 3:
-        del = 500; break;
-      default:
-        del = 50;
-    }
-    delay(del);
-
-    FastLED.clear();
-  }
-}
-
-/*
-void splash()
-{
-  // random colored splashes that fade smoothly
-  fadeToBlackBy(leds, NUM_LEDS, 1);
-  if (random8() < 4) {
-    byte size;
-    if (pos_shift == 0) { size = 20; }
-    else { size = min(pos_shift, 140); }
-    byte pos = random8(NUM_LEDS-1 - size);
-
-    bool overlap = false;
-    for(byte i = pos; i < pos+size; i++) {
-      overlap |= leds[i];
-    }
-
-    if (!overlap) {
-      for(byte i = pos; i < pos+size; i++) {
-        byte theta = (pos+(size/2)-i) * 255 / (2*size);
-        byte val = cos8(theta) - 1;          // library bug? val cannot be 255 below
-        leds[i] = CHSV(hue_shift, 230, val);
-      }
-    }
-  }
-}
-
-
-void quarks_collide() {
-  if (channel_timer == 0) {
-    start_millis = millis();
-    quarks_n = QUARKS_MAX >> (2*(2-(fade_size % 3)));
-    for (byte i=0; i<quarks_n; i++) {
-      Quark qk;
-      qk.a = fps_arr[fps_idx]/2 - random8(fps_arr[fps_idx]);
-      qk.b = random8(qk.size+2, NUM_LEDS-pos_shift-qk.size-2) << 8;
-      qk.size = QUARK_DEF_SIZE*2;
-      qk.pos = qk.b;
-      qk.pos8 = (byte) (qk.pos>>8);
-      if (pos_shift % 2 == 0) { qk.h = hue_shift; }
-      else { qk.h = hue_shift + 40 - random8(80); }
-      qk.s = 255;
-      quarks[i] = qk;
-    }
-  }
-
-  FastLED.clear();
-
-  for (byte i=0; i<quarks_n; i++) {
-    if (!quarks[i].move_away) {
-      if (quarks[i].pos8 <= fps_arr[fps_idx]/50) {
-        quarks[i].a = random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
-        quarks[i].b = quarks[i].pos - (millis() - start_millis) * quarks[i].a/4;
-        quarks[i].move_away = true;
-      } else if (quarks[i].pos8 >= NUM_LEDS-pos_shift-quarks[i].size-fps_arr[fps_idx]/50) {
-        quarks[i].a = -random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
-        quarks[i].b = quarks[i].pos - (millis() - start_millis) * quarks[i].a/4;
-        quarks[i].move_away = true;
-      } else if (random8() > 252 - (fps_arr[fps_idx]>>5)) {
-        if (quarks[i].a > 0) { quarks[i].a = -random8(4, fps_arr[fps_idx]/2); } else { quarks[i].a = random8(4, fps_arr[fps_idx]/2); }
-        quarks[i].b = quarks[i].pos - (millis() - start_millis) * quarks[i].a/4;
-      }
-    }
-
-    if ((quarks[i].pos8 > 10) && (quarks[i].pos8 < NUM_LEDS-pos_shift-quarks[i].size-10)) { quarks[i].move_away = false; }
-
-    quarks[i].pos = (millis() - start_millis) * quarks[i].a/4 + quarks[i].b;
-    quarks[i].pos8 = (byte) (quarks[i].pos>>8);
-    for(byte j = quarks[i].pos8; j < quarks[i].pos8+quarks[i].size; j++) {
-      if (leds[j]) {
-        if (channel_idx % 2 == 1) {
-          leds[j] = 0;
-          continue;
-        }
-      }
-      int angle = ((j<<8) - quarks[i].pos) / quarks[i].size;
-      leds[j] |= CHSV(quarks[i].h, quarks[i].s, quadwave8((byte) angle));
-    }
-  }
-}
-
-
-void qkd_change() {
-  last_change = millis();
-  byte change = random8(qkd.n + qkd.n-1);
-  if (change < qkd.n ) {
-    if (qkd.line[change] && (random8() < 64)) {
-      qkd.line[change] = false;
-      if (change > 0) { qkd.gap[change-1] = false; }
-      if (change < qkd.n - 1) { qkd.gap[change] = false; }
-    } else {
-      qkd.line[change] = true;
-      if ((change > 0) && qkd.line[change-1] && (random8(2) > 0)) { qkd.gap[change-1] = true; }
-      if ((change < qkd.n - 1) && qkd.line[change+1] && (random8(2) > 0)) { qkd.gap[change] = true; }
-    }
-  } else {
-    change -= qkd.n;
-    if (qkd.gap[change] && (random8() > 16)) {
-      qkd.gap[change] = false;
-      if (random8(2) > 0) { qkd.line[change] = false; }
-      if (random8(2) > 0) { qkd.line[change+1] = false; }
-    } else {
-      if (random8(2) > 0) { qkd.line[change] = true; qkd.line[change+1] = true; }
-      if (qkd.line[change] && qkd.line[change+1]) { qkd.gap[change] = true; }
-    }
-  }
-}
-
-void qkd_set_color(byte j, byte c, byte v) {
-  byte hue; byte coeff;
-  if (fade_size % 2 == 0) { coeff = j; } else { coeff = c; }
-  hue = inoise8((1+fade_size)*coeff, noise_z);
-  if (fade_size % 4 < 2) { hue = hue_shift + hue/2; }
-  leds[c] |= CHSV(hue, 192 + (inoise8((1+fade_size)*j, noise_z) >> 2), 255-v);
-}
-
-void quarks_deco() {
-  if (channel_timer == 0) {
-    start_millis = millis();
-    qkd.qk.size = QUARK_DEF_SIZE;
-    qkd.qk.a = fps_arr[fps_idx]/2 - random8(fps_arr[fps_idx]);
-    qkd.qk.b = 20<<8;
-    qkd.qk.pos = qkd.qk.b;
-    qkd.qk.pos8 = (byte) (qkd.qk.pos>>8);
-    qkd.qk.h = hue_shift;
-    qkd.qk.s = 255;
-    for(byte i = 0; i < qkd.n; i++) {
-      if (random8(4) < 3) { qkd.line[i] = true; } else { qkd.line[i] = false; } }
-    for(byte i = 0; i < qkd.n - 1; i++) {
-      if (qkd.line[i] && qkd.line[i+1] && (random8(2) < 1)) { qkd.gap[i] = true; } else { qkd.gap[i] = false; } }
-    for(byte i = 0; i < qkd.n - 1; i++) {
-      qkd.gap_size[i] = QUARK_DEF_SIZE*4; }
-    qkd.size = qkd.qk.size; for(byte i = 0; i < qkd.n - 1; i++) { qkd.size += qkd.gap_size[i]; }
-  }
-
-  FastLED.clear();
-
-  if (!qkd.qk.move_away) {
-    if (qkd.qk.pos8 <= fps_arr[fps_idx]/50) {
-      qkd.qk.a = random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
-      qkd.qk.b = qkd.qk.pos - (millis() - start_millis) * qkd.qk.a/4;
-      qkd.qk.move_away = true;
-    } else if (qkd.qk.pos8 >= NUM_LEDS-pos_shift-qkd.size-fps_arr[fps_idx]/50) {
-      qkd.qk.a = -random8(fps_arr[fps_idx]/5, fps_arr[fps_idx]);
-      qkd.qk.b = qkd.qk.pos - (millis() - start_millis) * qkd.qk.a/4;
-      qkd.qk.move_away = true;
-    }
-  }
-
-  if ((millis() - last_change > (20000/fps_arr[fps_idx])) && (random8() > 253 - (fps_arr[fps_idx]>>5))) {
-    qkd_change();
-  }
-
-  if ((qkd.qk.pos8 > 20) && (qkd.qk.pos8 < NUM_LEDS-pos_shift-qkd.size-20)) { qkd.qk.move_away = false; }
-
-  qkd.qk.pos = (millis() - start_millis) * qkd.qk.a/4 + qkd.qk.b;
-  qkd.qk.pos8 = (byte) (qkd.qk.pos>>8);
-  byte pos8 = qkd.qk.pos8;
-  for(byte i = 0; i < qkd.n; i++) {
-    if (qkd.line[i]) {
-      for(byte j = 0; j < 3; j++) {
-        qkd_set_color(j, pos8+j, abs(1-j)*120);
-      }
-    }
-    if (i != qkd.n - 1) {
-      if (qkd.line[i] && qkd.line[i+1] && qkd.gap[i]) {
-        for(byte j = 0; j < qkd.gap_size[i]; j++) {
-          qkd_set_color(j, pos8+1+j, 0);
-        }
-      }
-      pos8 += qkd.gap_size[i];
-    }
-  }
-  noise_z += 5;
-}
-
-
-void rainbow()
-{
-  fill_rainbow(leds, NUM_LEDS, gHue, 7);
-}
-
-void rainbowWithGlitter()
-{
-  // built-in FastLED rainbow, plus some random sparkly glitter
-  rainbow();
-  addGlitter(80);
-}
-
-void addGlitter( fract8 chanceOfGlitter)
-{
-  if( random8() < chanceOfGlitter) {
-    leds[ random16(NUM_LEDS) ] += CRGB::White;
-  }
-}
-
-void confetti()
-{
-  // random colored speckles that blink in and fade smoothly
-  fadeToBlackBy(leds, NUM_LEDS, 10);
-  int test = random8();
-  if (test > 248) {
-    int pos = random16(NUM_LEDS);
-    leds[pos] += CHSV( gHue + random8(64), 200, 255);
-  }
-}
-
-void sinelon()
-{
-  // a colored dot sweeping back and forth, with fading trails
-  fadeToBlackBy(leds, NUM_LEDS, 20);
-  int pos = beatsin16( 2, 0, 1.2*NUM_LEDS-1 ) - (0.1*NUM_LEDS);
-  if ((pos >= 0) & (pos < NUM_LEDS)) {
-    leds[pos] += CHSV(gHue, 255, 192);
-  }
-}
-
-void bpm()
-{
-  // colored stripes pulsing at a defined Beats-Per-Minute (BPM)
-  byte BeatsPerMinute = 8;
-  CRGBPalette16 palette = PartyColors_p;
-  byte beat = beatsin8( BeatsPerMinute, 64, 255);
-  for( int i = 0; i < NUM_LEDS; i++) { //9948
-    leds[i] = ColorFromPalette(palette, gHue+(i*2), beat-gHue+(i*7));
-  }
-}
-
-void juggle() {
-  // eight colored dots, weaving in and out of sync with each other
-  fadeToBlackBy( leds, NUM_LEDS, 20);
-
-  byte dothue = 0;
-  for( int i = 0; i < 8; i++) {
-    int jpulse = (i+13)/3;
-    leds[beatsin16( jpulse, 0, NUM_LEDS-1 )] |= CHSV(dothue, 200, 255);
-    dothue += 32;
-  }
-}
-*/
