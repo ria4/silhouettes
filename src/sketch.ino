@@ -5,6 +5,7 @@
 #include "IRremote.h"
 //#include "SD.h"
 
+
 FASTLED_USING_NAMESPACE
 
 #if defined(FASTLED_VERSION) && (FASTLED_VERSION < 3001000)
@@ -16,7 +17,7 @@ FASTLED_USING_NAMESPACE
 
 #define LED_TYPE    WS2812B
 #define COLOR_ORDER GRB
-#define NUM_LEDS    144
+#define NUM_LEDS    143
 
 #define BUTTON_PIN    2
 #define IRRCV_PIN     9
@@ -37,6 +38,15 @@ struct Channel {
   bool auto_refresh;
 } channels[] {
   { point, false, false },
+  { strikes, false, true },
+  //{ window, false, false },
+  { spaces, true, false },
+  { dual, false, false },
+  { dual, false, false },
+  { dual_rand, false, false },
+  { glitch_correct, false, false },
+  { glitch_correct, false, false },
+  //{ line_flashes, false, true },
   { line, true, false },
   { pulse, false, false },
   { gradient, true, false },
@@ -44,9 +54,12 @@ struct Channel {
   { holes, false, false },
   { lace, true, false },
   { sand, false, false },
-  { rgb, false, false },
   { heartbeat, false, true },
-  { border, true, false },
+  //{ border, true, false },
+  { border_i1, true, false },
+  { border_i2, true, false },
+  { border_i3, true, false },
+  //{ rgb, false, false },
   //{ cylon, true, true },
   //{ cylon_rainbow, true, true },
   //{ pixelated_hue, false, false },
@@ -117,6 +130,8 @@ bool sand_burnt[NUM_LEDS];
 byte heartbeat_r;
 byte heartbeat_b;
 
+byte line_flashes_cnt;
+
 unsigned long start_millis;
 unsigned long last_change;
 unsigned long next_change;
@@ -169,6 +184,7 @@ void loop()
     if ((channels[channel_idx].pattern != holes) &&
         (channels[channel_idx].pattern != heartbeat) &&
         (channels[channel_idx].pattern != border) &&
+        (channels[channel_idx].pattern != window) &&
         (channels[channel_idx].pattern != rgb)) {
       trapeze_fade();
     }
@@ -488,6 +504,113 @@ void heartbeat() {
 }
 
 
+void glitch_correct() {
+  for (byte i=0; i<NUM_LEDS-pos_shift; i++) {
+    if (leds_hue[i] == hue_shift) {
+      if (random8() < 10) {
+        leds_hue[i] = random8();
+        leds_hue[i] -= (leds_hue[i] - hue_shift) % 8;
+        leds[i].setHue(leds_hue[i]);
+      }
+    } else {
+      leds_hue[i] -= 8;
+      leds[i].setHue(leds_hue[i]);
+    }
+  }
+}
+
+
+void spaces() {
+  for (byte i=0; i<NUM_LEDS-pos_shift; i++) {
+    if (i%(pos_shift+1) == 0) {
+      leds[i].setHue(hue_shift);
+    }
+  }
+}
+
+
+void window() {
+  for (byte i = 0; i < NUM_LEDS; i++) {
+    if ((channel_timer < 64) || (channel_timer > 128) ||
+        (i < NUM_LEDS/2-pos_shift) ||
+        (i > NUM_LEDS/2+pos_shift)) {
+      leds[i] = CHSV(hue_shift - 64 + (inoise8((1+fade_size)*i, noise_z*2) >> 2), 255, 128 + (inoise8((1+fade_size)*i, noise_z) >> 1));
+    } else {
+      leds[i] = 0;
+    }
+  }
+  noise_z += 15;
+}
+
+
+void dual() {
+  if (channel_timer == 0) {
+    if (channel_idx % 2 == 0) {
+      fill_solid(leds, NUM_LEDS-pos_shift, CHSV(hue_shift, 255, 255));
+    } else {
+      fill_solid(leds, NUM_LEDS-pos_shift, CHSV(hue_shift+70, 255, 255));
+      for (byte i=0; i<NUM_LEDS-pos_shift; i++) {
+        leds_hue[i] = hue_shift+70;
+      }
+    }
+  }
+
+  if (channel_idx % 2 == 0) {
+    if (leds_hue[3] != hue_shift+70) {
+      for (byte i=0; i<NUM_LEDS-pos_shift; i++) {
+        if (i % 6 >= 3) {
+          leds_hue[i] += 1;
+          leds[i].setHue(leds_hue[i]);
+        }
+      }
+    }
+  } else {
+    if (leds_hue[0] != hue_shift) {
+      for (byte i=0; i<NUM_LEDS-pos_shift; i++) {
+        if (i % 6 < 3) {
+          leds_hue[i] -= 1;
+          leds[i].setHue(leds_hue[i]);
+        }
+      }
+    }
+  }
+}
+
+
+void dual_rand() {
+  if (channel_timer == 0) {
+    fill_solid(leds, NUM_LEDS-pos_shift, CHSV(hue_shift, 255, 255));
+  }
+
+  for (byte i=0; i<NUM_LEDS-pos_shift-3; i=i+3) {
+    if (random8() < 4) {
+      if (leds_hue[i] == hue_shift) {
+        for (byte j=0; j<3; j++) {
+          leds_hue[i+j] = hue_shift+70;
+          leds[i+j].setHue(hue_shift+70);
+        }
+      } else {
+        for (byte j=0; j<3; j++) {
+          leds_hue[i+j] = hue_shift;
+          leds[i+j].setHue(hue_shift);
+        }
+      }
+    }
+  }
+}
+
+
+void line_flashes() {
+  delay(4000);
+  byte h = 255/6 * line_flashes_cnt;
+  fill_solid(leds, NUM_LEDS-pos_shift, CHSV(h, 255, 255));
+  line_flashes_cnt = (line_flashes_cnt + 1) % 6;
+  FastLED.show();
+  delay(500);
+  FastLED.clear();
+}
+
+
 void rgb() {
   for (byte i=0; i<fade_size+1; i++) {
     leds[4+i]                                     = CRGB(200, 0, 0);
@@ -589,6 +712,12 @@ void holes() {
 
 
 void line() {
+/*
+  hue_shift = 255/6 * ((channel_idx-1) % 6);
+  for(byte i = pos_shift; i < NUM_LEDS; i++) {
+    leds[i].setHue(hue_shift);
+  }
+*/
   for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
     leds[i].setHue(hue_shift);
   }
@@ -682,6 +811,32 @@ void border() {
 }
 
 
+double sqi;
+void border_i1() {
+  for (byte i=0; i<NUM_LEDS-pos_shift; i++) {
+    sqi = sqrt(i);
+    leds[i] = CHSV(hue_shift + inoise8((1+fade_size)*i*sqi*sqrt(sqi), noise_z)/3*2, 255, 255);
+  }
+  noise_z += 15;
+}
+
+
+void border_i2() {
+  for (byte i=0; i<NUM_LEDS-pos_shift; i++) {
+    leds[i] = CHSV(inoise8(1+fade_size, noise_z*i/16), 255, 255);
+  }
+  noise_z += 2;
+}
+
+
+void border_i3() {
+  for (byte i=0; i<NUM_LEDS-pos_shift; i++) {
+    leds[i] = CHSV(hue_shift + inoise8(1+fade_size, noise_z*i/16)/2, 255, 255);
+  }
+  noise_z += 2;
+}
+
+
 void disintegrate() {
   if (channel_timer == 0) {
     uint16_t r = random16();
@@ -736,7 +891,6 @@ void split() {
   noise_z += 10;
 }
 
-/*
 void strikes()
 {
   if ( random8() < 20 ) {
@@ -780,10 +934,10 @@ void strikes()
     delay(del);
 
     FastLED.clear();
-    FastLED.show();
   }
 }
 
+/*
 void splash()
 {
   // random colored splashes that fade smoothly
@@ -1089,4 +1243,3 @@ void read_sd()
   }
 }
 */
-
