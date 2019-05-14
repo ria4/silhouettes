@@ -1,7 +1,7 @@
 void sinelon_p() {
   // a colored dot sweeping back and forth, with fading trail
   fadeToBlackBy(leds, NUM_LEDS, 20);
-  int pos = beatsin16( 2, 0, 1.2*NUM_LEDS-1 ) - (0.1*NUM_LEDS);
+  int pos = beatsin16(2, 0, 1.2*NUM_LEDS-1 ) - (0.1*NUM_LEDS);
   if ((pos >= 0) & (pos < NUM_LEDS)) {
     leds[pos] += CHSV(hue_warp, 255, 192);
   }

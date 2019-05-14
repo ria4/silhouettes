@@ -1,3 +1,5 @@
+byte strobes_cnt;;
+
 void strobes_p() {
 
   if ( random8() < 20 ) {
@@ -44,5 +46,16 @@ void strobes_p() {
   }
 }
 
+void strobes_rotate_colors_p() {
+  delay(4000);
+  byte h = 255/6 * strobes_cnt;
+  fill_solid(leds, NUM_LEDS-pos_shift, CHSV(h, 255, 255));
+  strobes_cnt = (strobes_cnt + 1) % 6;
+  FastLED.show();
+  delay(500);
+  FastLED.clear();
+}
+
 
 Channel strobes = { strobes_p, false, false, false };
+Channel strobes_rotate_colors = { strobes_rotate_colors_p, true, false, true };

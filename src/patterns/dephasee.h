@@ -1,27 +1,19 @@
-void dephasee_p()
-{
-  // random colored splashes that fade smoothly
-  fadeToBlackBy(leds, NUM_LEDS, 1);
-  if (random8() < 4) {
-    byte size;
-    if (pos_shift == 0) { size = 20; }
-    else { size = min(pos_shift, 140); }
-    byte pos = random8(NUM_LEDS-1 - size);
-
-    bool overlap = false;
-    for(byte i = pos; i < pos+size; i++) {
-      overlap |= leds[i];
+void dephasee_p() {
+  if (random8() < 220) {
+    for (byte i = 0; i < NUM_LEDS-pos_shift; i++) {
+      leds[i].fadeToBlackBy(1);
     }
+  }
 
-    if (!overlap) {
-      for(byte i = pos; i < pos+size; i++) {
-        byte theta = (pos+(size/2)-i) * 255 / (2*size);
-        byte val = cos8(theta) - 1;
-        // library bug? val cannot be 255 below
-        leds[i] = CHSV(hue_shift, 230, val);
+  for (byte i = 1; i < NUM_LEDS-pos_shift-1; i++) {
+    int r = random16();
+    if ((r < 128) && (r > 3)) {
+      for (int j = i; j <= min(NUM_LEDS-pos_shift-1, i + r/8); j++) {
+        leds[j].setHue(hue_shift - 96 + inoise8(5*i, noise_z)/4*3);
       }
     }
   }
+  noise_z += 10;
 }
 
 

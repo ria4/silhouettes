@@ -13,6 +13,7 @@
 
 
 CRGB leds[NUM_LEDS];
+byte leds_hue[NUM_LEDS];
 
 struct Channel {
   void (*pattern)();
@@ -24,6 +25,11 @@ struct Channel {
 byte channels_nbr;
 byte channel_idx = 0;
 byte channel_idx_tmp;
+
+IRrecv irrecv(IRRCV_PIN);
+decode_results results;
+char ir_buffer[3];
+byte curr_char_idx = 0;
 
 bool pause = false;
 byte channel_timer = 0;
@@ -46,9 +52,10 @@ unsigned long last_change;
 unsigned long next_change;
 
 
-int freeRam()
-{
-  extern int __heap_start, *__brkval;
-  int v;
-  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
-}
+void faneInit();
+byte fadeEdgesPx(byte min_val, byte i);
+void fadeEdges();
+byte neighboursUp(byte i);
+int freeRam();
+void resetLedsHue();
+void noisePx(byte i, byte hue_shift2=0);
