@@ -164,37 +164,27 @@ void flushChannelBuffer() {
   if (channel_idx_tmp < channels_nbr) {
     channel_idx = channel_idx_tmp;
     resetLedsHue();
-    signal(255);
+    signal(0);
     #ifdef SD_READ
-    if (channel_idx == 0) { signal(0); } else { signal(255); }
+    if (channel_idx == 0) { signal(155); } else { signal(0); }
     #endif
   }
   #ifdef SD_READ
-  else { if (set_sd_silhouette(channel_idx_tmp)) { channel_idx = 0; signal(0); } }
+  else { if (set_sd_silhouette(channel_idx_tmp)) { channel_idx = 0; signal(155); } }
   #endif
   curr_char_idx = 0;
 }
 
-void flushFadeSizeBuffer() {
+void flushBuffer(byte *var) {
   ir_buffer[curr_char_idx] = 0;
-  fade_size = atoi(ir_buffer);
+  *var = atoi(ir_buffer);
   curr_char_idx = 0;
-  FastLED.clear();
+  signal(0);
 }
 
-void flushPosShiftBuffer() {
-  ir_buffer[curr_char_idx] = 0;
-  pos_shift = atoi(ir_buffer);
-  curr_char_idx = 0;
-  FastLED.clear();
-}
-
-void flushHueShiftBuffer() {
-  ir_buffer[curr_char_idx] = 0;
-  hue_shift = atoi(ir_buffer);
-  curr_char_idx = 0;
-  FastLED.clear();
-}
+void flushFadeSizeBuffer() { flushBuffer(&fade_size); }
+void flushPosShiftBuffer() { flushBuffer(&pos_shift); }
+void flushHueShiftBuffer() { flushBuffer(&hue_shift); }
 
 
 // IR Remote Instructions
@@ -216,15 +206,15 @@ void checkIRSignal()
 
       case 0xFFA25D:
       case 0xE318261B:
-        prevChannel(); break;
+        pause = true; prevChannel(); break;
 
       case 0xFFE21D:
       case 0xEE886D7F:
-        nextChannel(); break;
+        pause = true; nextChannel(); break;
 
       case 0xFF629D:
       case 0x511DBB:
-        flushChannelBuffer(); break;
+        pause = true; flushChannelBuffer(); break;
 
       case 0xFF906F:
       case 0xE5CFBD7F:
@@ -309,44 +299,46 @@ void checkIRSignal()
 
 void signal(byte rb) {
   FastLED.clear();
-  leds[0] = CRGB(rb, 0, 255-rb);
+  if (pause) {
+    if (rb == 0) { rb = hue_shift; }
+    leds[0] = CHSV(rb, 255, 255);
+    FastLED.show();
+    delay(CHANGE_SIG_LENGTH);
+    leds[0] = 0;
+  }
   FastLED.show();
-  delay(CHANGE_SIG_LENGTH);
-  leds[0] = CRGB(0, 0, 0);
-  FastLED.show();
-  pause = true;
 }
 
 void prevChannel() {
   #ifdef SD_READ
   if (channel_idx == 0) {
-    if (set_sd_silhouette(sd_idx - 1)) { signal(0); return; }
+    if (set_sd_silhouette(sd_idx - 1)) { signal(155); return; }
     else { channel_idx = channels_nbr - 1; } }
   else {
     if (channel_idx == 1) {
-      if (set_sd_silhouette(sd_idx)) { channel_idx = 0; signal(0); return; }
+      if (set_sd_silhouette(sd_idx)) { channel_idx = 0; signal(155); return; }
       else { channel_idx = channels_nbr - 1; } }
     else { channel_idx--; } }
   #else
   if (channel_idx == 0) { channel_idx = channels_nbr-1; } else { channel_idx--; }
   #endif
   resetLedsHue();
-  signal(255);
+  signal(0);
 }
 
 void nextChannel() {
   #ifdef SD_READ
   if (channel_idx == 0) {
-    if (set_sd_silhouette(sd_idx + 1)) { signal(0); return; }
+    if (set_sd_silhouette(sd_idx + 1)) { signal(155); return; }
     else { channel_idx = 1; } }
   else {
     if (channel_idx == channels_nbr - 1) {
-      if (set_sd_silhouette(sd_idx)) { channel_idx = 0; signal(0); return; }
+      if (set_sd_silhouette(sd_idx)) { channel_idx = 0; signal(155); return; }
       else { channel_idx = 0; } }
     else { channel_idx++; } }
   #else
   if (channel_idx == channels_nbr-1) { channel_idx = 0; } else { channel_idx++; }
   #endif
   resetLedsHue();
-  signal(255);
+  signal(0);
 }
