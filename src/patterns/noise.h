@@ -2,7 +2,7 @@ double sqi;
 
 void noise_p() {
   for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-    noise_px(i);
+    noisePx(i);
   }
   noise_z += 15;
 }

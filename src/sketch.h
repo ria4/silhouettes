@@ -42,7 +42,7 @@ byte hue_shift = 0;
 byte hue_warp = 0;
 byte fade_size = 0;
 
-byte brightness = 15;
+byte brightness = 25;
 byte fps_idx = 2;
 
 static uint16_t noise_z;

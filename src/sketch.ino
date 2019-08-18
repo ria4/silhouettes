@@ -7,7 +7,11 @@
 #include "patterns/point.h"
 #include "patterns/line.h"
 #include "patterns/pulse.h"
-#include "patterns/confetti.h"
+#include "patterns/strobes.h"
+#include "patterns/dual.h"
+#include "patterns/noise.h"
+#include "patterns/hue_derive.h"
+#include "patterns/dephasee.h"
 
 FASTLED_USING_NAMESPACE
 #if defined(FASTLED_VERSION) && (FASTLED_VERSION < 3001000)
@@ -18,9 +22,17 @@ FASTLED_USING_NAMESPACE
 
 Channel channels[] = {
   point,
+  points,
+  points_gradient,
   line,
   pulse,
-  confetti,
+  strobes,
+  dual_rand,
+  dual_rrand,
+  noise_conditional,
+  hue_anchor,
+  hue_drift,
+  dephasee,
 };
 
 

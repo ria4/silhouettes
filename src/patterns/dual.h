@@ -34,18 +34,42 @@ void dual_p() {
 
 void dual_rand_p() {
   if (channel_timer == 0) {
-    fill_solid(leds, NUM_LEDS-pos_shift, CHSV(hue_shift, 255, 255));
+    fill_solid(leds, NUM_LEDS-pos_shift-((NUM_LEDS-pos_shift)%(fade_size+1)), CHSV(hue_shift, 255, 255));
   }
 
-  for (byte i=0; i<NUM_LEDS-pos_shift-3; i=i+3) {
+  for (byte i=0; i<NUM_LEDS-pos_shift-((NUM_LEDS-pos_shift)%(fade_size+1)); i=i+fade_size+1) {
     if (random8() < 4) {
       if (leds_hue[i] == hue_shift) {
-        for (byte j=0; j<3; j++) {
+        for (byte j=0; j<fade_size+1; j++) {
           leds_hue[i+j] = hue_shift+70;
           leds[i+j].setHue(hue_shift+70);
         }
       } else {
-        for (byte j=0; j<3; j++) {
+        for (byte j=0; j<fade_size+1; j++) {
+          leds_hue[i+j] = hue_shift;
+          leds[i+j].setHue(hue_shift);
+        }
+      }
+    }
+  }
+}
+
+
+void dual_rrand_p() {
+  if (channel_timer == 0) {
+    fill_solid(leds, NUM_LEDS-pos_shift, CHSV(hue_shift, 255, 255));
+  }
+
+  for (byte i=0; i<NUM_LEDS-pos_shift-(fade_size+1); i=i+(fade_size+1)) {
+    if (random8() < 4) {
+      if (leds_hue[i] == hue_shift) {
+        byte r = random8()/3;
+        for (byte j=0; j<fade_size+1; j++) {
+          leds_hue[i+j] = hue_shift+r;
+          leds[i+j].setHue(hue_shift+r);
+        }
+      } else {
+        for (byte j=0; j<fade_size+1; j++) {
           leds_hue[i+j] = hue_shift;
           leds[i+j].setHue(hue_shift);
         }
@@ -56,4 +80,5 @@ void dual_rand_p() {
 
 
 Channel dual = { dual_p, false, false, true };
-Channel dual_rand = { dual_rand_p, false, false, true };
+Channel dual_rand = { dual_rand_p, false, false, false };
+Channel dual_rrand = { dual_rrand_p, false, false, false };
