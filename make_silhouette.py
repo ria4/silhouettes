@@ -1,3 +1,7 @@
+"""
+Create SIL file from JPG pictures.
+"""
+
 #!/usr/bin/python
 
 import struct
@@ -52,8 +56,12 @@ if not isinstance(pixels[0], tuple):
     img_new = img_new.convert("RGB")
     pixels = list(img_new.getdata())
 
-for (r, g, b) in pixels:
-    res += chr(r) + chr(g) + chr(b)
+if len(pixels[0]) == 4:
+    for (r, g, b, x) in pixels:
+        res += chr(r) + chr(g) + chr(b)
+else:
+    for (r, g, b) in pixels:
+        res += chr(r) + chr(g) + chr(b)
 
 
 idx1 = img_name.rfind('/')
