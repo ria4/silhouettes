@@ -52,10 +52,15 @@ unsigned long last_change;
 unsigned long next_change;
 
 
-void faneInit();
+void fadeInit();
 byte fadeEdgesPx(byte min_val, byte i);
 void fadeEdges();
 byte neighboursUp(byte i);
 int freeRam();
 void resetLedsHue();
 void noisePx(byte i, byte hue_shift2=0);
+
+void checkIRSignal();
+void signal(byte rb);
+void prevChannel();
+void nextChannel();
