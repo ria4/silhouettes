@@ -1,4 +1,4 @@
-byte strobes_cnt;;
+byte strobes_cnt;
 
 void strobes_p() {
 
@@ -29,7 +29,7 @@ void strobes_p() {
     fill_solid(&(leds[start]), size, CHSV(hue, 255, 255));
     FastLED.show();
 
-    byte del;
+    int del;
     switch(pos_shift % 10) {
       case 1:
         del = 2; break;
