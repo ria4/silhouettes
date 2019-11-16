@@ -1,6 +1,6 @@
 void line_p() {
   for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
-    leds[i].setHue(hue_shift);
+    setToColorShift(i);
   }
 }
 

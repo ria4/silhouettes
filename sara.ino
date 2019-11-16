@@ -25,6 +25,7 @@ Channel channels[] = {
   point,
   points,
   points_gradient,
+  points_gradient_balanced,
   line,
   pulse,
   strobes,
@@ -98,6 +99,11 @@ void loop() {
 
 // Helpers
 
+void setToColorShift(byte i) {
+  if (crgb_shift_active) { leds[i] = crgb_shift; }
+  else { leds[i].setHue(hue_shift); }
+}
+
 void fadeInit() {
   for(byte i = 0; i < NUM_LEDS-pos_shift; i++) {
     leds[i].nscale8(channel_timer*5);
@@ -154,7 +160,7 @@ void noisePx(byte i, byte hue_shift2) {
 // Buffer Logic
 
 void addToBuffer(char c) {
-  if ( curr_char_idx < 3 ) {
+  if ( curr_char_idx < 18 ) {
     ir_buffer[curr_char_idx++] = c;
   }
 }
@@ -177,16 +183,56 @@ void flushChannelBuffer() {
   curr_char_idx = 0;
 }
 
-void flushBuffer(byte *var) {
+void flushByteBuffer(byte *var) {
   ir_buffer[curr_char_idx] = 0;
-  *var = atoi(ir_buffer);
-  curr_char_idx = 0;
-  signal(0);
+  if (curr_char_idx <= 3) {
+    *var = atoi(ir_buffer);
+    curr_char_idx = 0;
+  } else {
+    // flush the last three chars
+    *var = atoi(ir_buffer + curr_char_idx - 3);
+    curr_char_idx -= 3;
+  }
 }
 
-void flushFadeSizeBuffer() { flushBuffer(&fade_size); }
-void flushPosShiftBuffer() { flushBuffer(&pos_shift); }
-void flushHueShiftBuffer() { flushBuffer(&hue_shift); }
+void flushFadeSizeBuffer() { flushByteBuffer(&fade_size); signal(); }
+
+void flushPosShiftBuffer() { flushByteBuffer(&pos_shift); signal(); }
+
+void flushHueShiftBuffer() {
+  if (curr_char_idx <= 3) {
+    flushByteBuffer(&hue_shift);
+    crgb_shift_active = false;
+    color_bis_active = false;
+  } else if (curr_char_idx <= 6) {
+    flushByteBuffer(&hue_shift_bis);
+    flushByteBuffer(&hue_shift);
+    crgb_shift_active = false;
+    color_bis_active = true;
+  } else if (curr_char_idx == 9) {
+    flushByteBuffer(&b_tmp); flushByteBuffer(&g_tmp); flushByteBuffer(&r_tmp);
+    crgb_shift = CRGB(r_tmp, g_tmp, b_tmp);
+    crgb_shift_active = true;
+    color_bis_active = false;
+  } else if (curr_char_idx == 12) {
+    flushByteBuffer(&h_tmp);
+    crgb_shift_bis = CHSV(h_tmp, 255, 255);
+    flushByteBuffer(&b_tmp); flushByteBuffer(&g_tmp); flushByteBuffer(&r_tmp);
+    crgb_shift = CRGB(r_tmp, g_tmp, b_tmp);
+    crgb_shift_active = true;
+    color_bis_active = true;
+  } else if (curr_char_idx == 18) {
+    flushByteBuffer(&b_tmp); flushByteBuffer(&g_tmp); flushByteBuffer(&r_tmp);
+    crgb_shift_bis = CRGB(r_tmp, g_tmp, b_tmp);
+    flushByteBuffer(&b_tmp); flushByteBuffer(&g_tmp); flushByteBuffer(&r_tmp);
+    crgb_shift = CRGB(r_tmp, g_tmp, b_tmp);
+    crgb_shift_active = true;
+    color_bis_active = true;
+  } else {
+    curr_char_idx = 0;
+  }
+  signal();
+}
 
 
 // IR Remote Instructions
@@ -299,14 +345,26 @@ void checkIRSignal()
 
 // Channel Switching
 
-void signal(byte rb) {
+void signal(byte h) {
   FastLED.clear();
   if (pause) {
-    if (rb == 0) { leds[0] = CRGB::SteelBlue; }
-    else { leds[0] = CHSV(rb, 255, 255); }
+    if (h == 0) {
+      if (crgb_shift_active) {
+        leds[0] = crgb_shift;
+        if (color_bis_active) {
+          leds[1] = crgb_shift_bis;
+        }
+      } else {
+        leds[0] = CHSV(hue_shift, 255, 255);
+        if (color_bis_active) {
+          leds[1] = CHSV(hue_shift_bis, 255, 255);
+        }
+      }
+    }
+    else { leds[0] = CHSV(h, 255, 255); }
     FastLED.show();
     delay(CHANGE_SIG_LENGTH);
-    leds[0] = 0;
+    leds[0] = leds[1] = 0;
   }
   FastLED.show();
 }
