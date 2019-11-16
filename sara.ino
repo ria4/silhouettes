@@ -6,6 +6,7 @@
 #include "sara.h"
 #include "patterns/point.h"
 #include "patterns/line.h"
+#include "patterns/holes.h"
 #include "patterns/pulse.h"
 #include "patterns/strobes.h"
 #include "patterns/dual.h"
@@ -27,6 +28,7 @@ Channel channels[] = {
   line,
   pulse,
   strobes,
+  holes,
   dual_rand,
   dual_rrand,
   noise_conditional,
@@ -300,8 +302,8 @@ void checkIRSignal()
 void signal(byte rb) {
   FastLED.clear();
   if (pause) {
-    if (rb == 0) { rb = hue_shift; }
-    leds[0] = CHSV(rb, 255, 255);
+    if (rb == 0) { leds[0] = CRGB::SteelBlue; }
+    else { leds[0] = CHSV(rb, 255, 255); }
     FastLED.show();
     delay(CHANGE_SIG_LENGTH);
     leds[0] = 0;
